@@ -1,0 +1,1 @@
+Spring Boot 3 app (Ports & Adapters). Ingests local files/docs via REST API, creates embeddings (Spring AI + OpenAI), stores to PostgreSQL pgvector. Package: pl.km. Build: Gradle. Infra: docker-compose (pgvector/pgvector:pg16 + app image).
