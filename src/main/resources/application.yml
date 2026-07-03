@@ -1,0 +1,12 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ragdb
+    username: raguser
+    password: ragpass
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:changeme}
+    vectorstore:
+      pgvector:
+        initialize-schema: true
+        dimensions: 1536
