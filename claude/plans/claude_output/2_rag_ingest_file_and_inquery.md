@@ -55,3 +55,18 @@ Added: `implementation 'org.springframework.ai:spring-ai-tika-document-reader'`
 
 ## Branch
 `feature/2-rag-ingest-file-and-query` ✓ created
+
+---
+
+## Fix: wrap query response in object
+
+**Issue:** `POST /api/documents/query` returned `List<QueryResultDto>` directly instead of wrapped in an object.
+
+**Change:**
+- Added `adapter/in/rest/QueryResponse.java` — record: `List<QueryResultDto> results`
+- Updated `DocumentController.query()` return type from `ResponseEntity<List<QueryResultDto>>` to `ResponseEntity<QueryResponse>`
+
+**Response shape after fix:**
+```json
+{ "results": [ { "name": "...", "content": "...", "score": 0.9 } ] }
+```
