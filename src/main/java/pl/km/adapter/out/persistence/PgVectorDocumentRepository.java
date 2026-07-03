@@ -19,11 +19,11 @@ public class PgVectorDocumentRepository implements DocumentVectorRepository {
 
     @Override
     public void save(pl.km.domain.model.Document document, float[] embedding) {
-        Document aiDoc = new Document(
-                document.id().toString(),
-                document.content(),
-                Map.of("name", document.name())
-        );
+        Document aiDoc = Document.builder()
+                .id(document.id().toString())
+                .text(document.content())
+                .metadata(Map.of("name", document.name()))
+                .build();
         vectorStore.add(List.of(aiDoc));
     }
 }

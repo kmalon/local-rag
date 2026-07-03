@@ -4,9 +4,7 @@ spring:
     username: raguser
     password: ragpass
   ai:
-    openai:
-      api-key: ${OPENAI_API_KEY:changeme}
     vectorstore:
       pgvector:
         initialize-schema: true
-        dimensions: 1536
+        dimensions: 384
