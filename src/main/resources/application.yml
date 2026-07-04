@@ -13,3 +13,5 @@ rag:
   chunking:
     chunk-size: 1000
     overlap-ratio: 0.2
+  query:
+    default-score-threshold: 0.75

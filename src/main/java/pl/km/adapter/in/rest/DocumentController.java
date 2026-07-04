@@ -44,7 +44,7 @@ public class DocumentController {
     @PostMapping("/query")
     public ResponseEntity<QueryResponse> query(@RequestBody QueryRequest request) {
         return ResponseEntity.ok(new QueryResponse(
-                queryDocumentUseCase.query(request.question(), request.topK()).stream()
+                queryDocumentUseCase.query(request.question(), request.topK(), request.score()).stream()
                         .map(r -> new QueryResultDto(r.name(), r.content(), r.score()))
                         .toList()
         ));

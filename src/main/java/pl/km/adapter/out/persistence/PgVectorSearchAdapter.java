@@ -18,8 +18,12 @@ public class PgVectorSearchAdapter implements VectorSearchPort {
     }
 
     @Override
-    public List<QueryResult> search(String query, int topK) {
-        return vectorStore.similaritySearch(SearchRequest.builder().query(query).topK(topK).build())
+    public List<QueryResult> search(String query, int topK, double scoreThreshold) {
+        return vectorStore.similaritySearch(SearchRequest.builder()
+                        .query(query)
+                        .topK(topK)
+                        .similarityThreshold(scoreThreshold)
+                        .build())
                 .stream()
                 .map(doc -> new QueryResult(
                         (String) doc.getMetadata().getOrDefault("name", "unknown"),
