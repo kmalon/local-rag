@@ -8,3 +8,8 @@ spring:
       pgvector:
         initialize-schema: true
         dimensions: 384
+
+rag:
+  chunking:
+    chunk-size: 1000
+    overlap-ratio: 0.2

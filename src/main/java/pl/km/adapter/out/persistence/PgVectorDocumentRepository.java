@@ -22,7 +22,7 @@ public class PgVectorDocumentRepository implements DocumentVectorRepository {
         Document aiDoc = Document.builder()
                 .id(document.id().toString())
                 .text(document.content())
-                .metadata(Map.of("name", document.name()))
+                .metadata(Map.of("name", document.name(), "chunkIndex", document.chunkIndex()))
                 .build();
         vectorStore.add(List.of(aiDoc));
     }
