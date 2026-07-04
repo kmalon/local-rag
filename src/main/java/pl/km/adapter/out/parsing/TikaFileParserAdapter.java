@@ -13,7 +13,7 @@ import java.util.stream.Collectors;
 @Component
 public class TikaFileParserAdapter implements FileParserPort {
 
-    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("md", "markdown", "txt", "pdf");
+    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("md", "markdown", "txt", "pdf", "doc", "docx");
 
     @Override
     public String parse(String filename, InputStream inputStream) {

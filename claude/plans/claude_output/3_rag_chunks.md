@@ -42,3 +42,12 @@ New `rag.chunking.*` properties (application.yml), chars-based (no tokenizer dep
 
 ## Branch
 `feature/3-rag-chunking` ✓ created
+
+---
+
+## Fix: add doc/docx support
+
+**Issue:** File ingestion only allowed `md/markdown/txt/pdf`, but Tika (already used as the parser) also supports `.doc`/`.docx`.
+
+**Change:**
+- `adapter/out/parsing/TikaFileParserAdapter.java` — `SUPPORTED_EXTENSIONS` extended with `"doc"`, `"docx"`
