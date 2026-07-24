@@ -1,0 +1,43 @@
+{
+  "realm": "local-rag",
+  "enabled": true,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      { "name": "rag_admin", "description": "Full access: ingestion and query" },
+      { "name": "rag_user", "description": "Read access: query only" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "rag-client",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "Admin",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "__RAG_ADMIN_PASSWORD__", "temporary": false }
+      ],
+      "realmRoles": ["rag_admin", "rag_user"]
+    },
+    {
+      "username": "User",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        { "type": "password", "value": "__RAG_USER_PASSWORD__", "temporary": false }
+      ],
+      "realmRoles": ["rag_user"]
+    }
+  ]
+}
