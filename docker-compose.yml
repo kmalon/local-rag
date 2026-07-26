@@ -21,15 +21,18 @@ services:
       - |
         set -e
         mkdir -p /opt/keycloak/data/import
-        sed -e "s|__RAG_ADMIN_PASSWORD__|$$(cat /run/secrets/rag_admin_password)|g" \
-            -e "s|__RAG_USER_PASSWORD__|$$(cat /run/secrets/rag_user_password)|g" \
-            /opt/keycloak/data/import-template/realm-local-rag.json \
-            > /opt/keycloak/data/import/realm-local-rag.json
+        # Use bash parameter expansion (not sed) so passwords containing
+        # sed metacharacters like | & \ / are substituted literally.
+        template="$$(cat /opt/keycloak/data/import-template/realm-local-rag.json)"
+        template="$${template//__RAG_ADMIN_PASSWORD__/$$(cat /run/secrets/rag_admin_password)}"
+        template="$${template//__RAG_USER_PASSWORD__/$$(cat /run/secrets/rag_user_password)}"
+        printf '%s' "$$template" > /opt/keycloak/data/import/realm-local-rag.json
         export KC_BOOTSTRAP_ADMIN_USERNAME="$$(cat /run/secrets/keycloak_admin_user)"
         export KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /run/secrets/keycloak_admin_password)"
         exec /opt/keycloak/bin/kc.sh start-dev --import-realm
     environment:
       KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: http://localhost:8081
       KC_HOSTNAME_STRICT: "false"
     ports:
       - "8081:8080"
@@ -41,7 +44,9 @@ services:
       - rag_admin_password
       - rag_user_password
     healthcheck:
-      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      # Invoke bash explicitly: the /dev/tcp redirection is a bash extension and
+      # the base image's /bin/sh (used by CMD-SHELL) is not guaranteed to be bash.
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -56,7 +61,8 @@ services:
       # Datasource username/password are read from /run/secrets via Spring's configtree
       SPRING_CONFIG_IMPORT: optional:configtree:/run/secrets/
       OPENAI_API_KEY: ${OPENAI_API_KEY}
-      KEYCLOAK_ISSUER_URI: http://keycloak:8080/realms/local-rag
+      KEYCLOAK_ISSUER_URI: http://localhost:8081/realms/local-rag
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/local-rag/protocol/openid-connect/certs
     secrets:
       - source: postgres_user
         target: spring.datasource.username

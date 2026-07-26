@@ -1,18 +1,17 @@
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/ragdb
-    #username: raguser
-    #password: ragpass
+    username: ${POSTGRES_USER:raguser}
+    password: ${POSTGRES_PASSWORD:ragpass}
   ai:
     vectorstore:
       pgvector:
         initialize-schema: true
         dimensions: 384
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/local-rag}
+
+keycloak:
+  issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/local-rag}
+  jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8081/realms/local-rag/protocol/openid-connect/certs}
 
 rag:
   chunking:
