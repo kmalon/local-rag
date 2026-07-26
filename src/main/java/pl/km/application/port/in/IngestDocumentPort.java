@@ -1,5 +1,5 @@
 package pl.km.application.port.in;
 
-public interface IngestDocumentUseCase {
+public interface IngestDocumentPort {
     void ingest(String name, String content);
 }

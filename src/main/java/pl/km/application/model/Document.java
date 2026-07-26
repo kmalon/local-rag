@@ -1,4 +1,4 @@
-package pl.km.domain.model;
+package pl.km.application.model;
 
 import java.util.UUID;
 

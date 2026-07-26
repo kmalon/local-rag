@@ -1,16 +1,14 @@
-package pl.km.application.service;
+package pl.km.application;
 
-import org.springframework.stereotype.Service;
-import pl.km.application.port.in.QueryDocumentUseCase;
+import pl.km.application.model.QueryResult;
+import pl.km.application.port.in.QueryDocumentPort;
 import pl.km.application.port.out.RerankerPort;
 import pl.km.application.port.out.VectorSearchPort;
 import pl.km.config.QueryProperties;
-import pl.km.domain.model.QueryResult;
 
 import java.util.List;
 
-@Service
-public class QueryDocumentService implements QueryDocumentUseCase {
+public class QueryDocumentService implements QueryDocumentPort {
 
     private final VectorSearchPort vectorSearchPort;
     private final RerankerPort rerankerPort;

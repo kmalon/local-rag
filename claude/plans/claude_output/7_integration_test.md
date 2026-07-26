@@ -4,7 +4,7 @@
 All tests live under `src/test/java`, mixing fast unit tests w/ context-booting integration tests run by the single `test` task. Goal: isolate integration tests into a dedicated `integration-test` source set so unit tests stay fast and integration tests run as a separate Gradle task.
 
 ## Classification (current 2 test files)
-- `pl.km.application.service.QueryDocumentServiceTest` — pure Mockito unit test, no Spring context → **stays** in `src/test/java`.
+- `pl.km.application.QueryDocumentServiceTest` — pure Mockito unit test, no Spring context → **stays** in `src/test/java`.
 - `pl.km.config.SecurityConfigTest` — `@WebMvcTest` boots Spring MVC+Security slice context → **integration test → move**.
 
 ## Changes

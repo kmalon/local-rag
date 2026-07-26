@@ -4,7 +4,7 @@ import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
 import pl.km.application.port.out.VectorSearchPort;
-import pl.km.domain.model.QueryResult;
+import pl.km.application.model.QueryResult;
 
 import java.util.List;
 

@@ -1,6 +1,6 @@
 package pl.km.application.port.out;
 
-import pl.km.domain.model.QueryResult;
+import pl.km.application.model.QueryResult;
 
 import java.util.List;
 
