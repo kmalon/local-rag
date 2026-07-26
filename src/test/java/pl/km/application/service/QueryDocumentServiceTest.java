@@ -35,14 +35,12 @@ class QueryDocumentServiceTest {
 
         service.query("q", 3, 0.0);
 
-        // Vector store is queried with the candidate pool size, independent of topK.
         verify(vectorSearchPort).search(eq("q"), eq(20));
     }
 
     @Test
     void filtersByRerankerScoreAndLimitsToTopK() {
         when(vectorSearchPort.search(any(), anyInt())).thenReturn(List.of(r("a", 0.1), r("b", 0.1), r("c", 0.1)));
-        // Reranker returns already-sorted, re-scored results.
         when(rerankerPort.rerank(any(), any()))
                 .thenReturn(List.of(r("b", 0.95), r("a", 0.80), r("c", 0.40)));
 
@@ -50,6 +48,24 @@ class QueryDocumentServiceTest {
 
         assertThat(result).extracting(QueryResult::name).containsExactly("b", "a");
         assertThat(result).allSatisfy(qr -> assertThat(qr.score()).isGreaterThanOrEqualTo(0.75));
+    }
+
+    @Test
+    void poolIsClampedToTopKWhenTopKExceedsConfiguredPool() {
+        when(vectorSearchPort.search(any(), anyInt())).thenReturn(List.of());
+        when(rerankerPort.rerank(any(), any())).thenReturn(List.of());
+
+        service.query("q", 50, 0.0);
+
+        verify(vectorSearchPort).search(eq("q"), eq(50));
+    }
+
+    @Test
+    void emptyCandidatePoolYieldsEmptyResult() {
+        when(vectorSearchPort.search(any(), anyInt())).thenReturn(List.of());
+        when(rerankerPort.rerank(any(), any())).thenReturn(List.of());
+
+        assertThat(service.query("q", 5, null)).isEmpty();
     }
 
     @Test

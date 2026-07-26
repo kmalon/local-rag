@@ -7,9 +7,11 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.BeanInitializationException;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
+import pl.km.application.exception.RerankerException;
 import pl.km.application.port.out.RerankerPort;
 import pl.km.config.RerankerProperties;
 import pl.km.domain.model.QueryResult;
@@ -19,6 +21,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -41,20 +44,38 @@ public class OnnxCrossEncoderRerankerAdapter implements RerankerPort, Disposable
     private final OrtSession session;
     private final Set<String> inputNames;
 
-    public OnnxCrossEncoderRerankerAdapter(RerankerProperties properties) throws Exception {
-        Path tokenizerPath = toLocalFile(properties.tokenizerUri(), "reranker-tokenizer", ".json");
-        this.tokenizer = HuggingFaceTokenizer.builder()
-                .optTokenizerPath(tokenizerPath)
-                .optAddSpecialTokens(true)
-                .optTruncation(true)
-                .optMaxLength(MAX_LENGTH)
-                .build();
+    public OnnxCrossEncoderRerankerAdapter(RerankerProperties properties) {
+        List<Path> tempFiles = new ArrayList<>();
+        try {
+            Path tokenizerPath = toLocalFile(properties.tokenizerUri(), "reranker-tokenizer", ".json", tempFiles);
+            this.tokenizer = HuggingFaceTokenizer.builder()
+                    .optTokenizerPath(tokenizerPath)
+                    .optAddSpecialTokens(true)
+                    .optTruncation(true)
+                    .optMaxLength(MAX_LENGTH)
+                    .build();
 
-        Path modelPath = toLocalFile(properties.modelUri(), "reranker-model", ".onnx");
-        this.environment = OrtEnvironment.getEnvironment();
-        this.session = environment.createSession(modelPath.toString(), new OrtSession.SessionOptions());
-        this.inputNames = session.getInputNames();
-        log.info("Cross-encoder reranker loaded (model inputs: {})", inputNames);
+            Path modelPath = toLocalFile(properties.modelUri(), "reranker-model", ".onnx", tempFiles);
+            this.environment = OrtEnvironment.getEnvironment();
+            this.session = environment.createSession(modelPath.toString(), new OrtSession.SessionOptions());
+            this.inputNames = session.getInputNames();
+            log.info("Cross-encoder reranker loaded (model inputs: {})", inputNames);
+        } catch (Exception e) {
+            log.error("Failed to initialise cross-encoder reranker", e);
+            throw new BeanInitializationException(
+                    "Failed to initialise cross-encoder reranker; ensure the model and tokenizer are "
+                            + "available (see resources/models/reranker/README.md)", e);
+        } finally {
+            // Model + tokenizer are fully loaded into memory now; the on-disk copies are no longer
+            // needed. Deleting eagerly avoids temp-file accumulation across repeated context restarts.
+            for (Path temp : tempFiles) {
+                try {
+                    Files.deleteIfExists(temp);
+                } catch (IOException ex) {
+                    log.warn("Could not delete reranker temp file {}", temp, ex);
+                }
+            }
+        }
     }
 
     @Override
@@ -85,7 +106,7 @@ public class OnnxCrossEncoderRerankerAdapter implements RerankerPort, Disposable
                 return sigmoid(logits[0][0]);
             }
         } catch (Exception e) {
-            throw new IllegalStateException("Cross-encoder inference failed", e);
+            throw new RerankerException("Cross-encoder inference failed", e);
         } finally {
             inputs.values().forEach(OnnxTensor::close);
         }
@@ -101,12 +122,13 @@ public class OnnxCrossEncoderRerankerAdapter implements RerankerPort, Disposable
         return 1.0 / (1.0 + Math.exp(-x));
     }
 
-    private static Path toLocalFile(Resource resource, String prefix, String suffix) throws IOException {
+    private static Path toLocalFile(Resource resource, String prefix, String suffix, List<Path> tempFiles)
+            throws IOException {
         if (resource.isFile()) {
             return resource.getFile().toPath();
         }
         Path temp = Files.createTempFile(prefix, suffix);
-        temp.toFile().deleteOnExit();
+        tempFiles.add(temp);
         try (InputStream in = resource.getInputStream()) {
             Files.copy(in, temp, StandardCopyOption.REPLACE_EXISTING);
         }

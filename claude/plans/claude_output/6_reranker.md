@@ -52,3 +52,15 @@ Build not verified locally — no JDK/Gradle toolchain in sandbox (JAVA_HOME uns
 
 ## Branch
 `feature/6-reranker` ✓ created
+
+---
+
+## Review fixes (PR #2, automated review)
+Applied (excluding #1 tokenizer thread-safety, deferred by request):
+- **#4 pool vs topK**: `QueryDocumentService` now over-fetches `max(candidatePoolSize, topK)` so the "up to topK" contract holds.
+- **#3 error handling**: constructor wraps load failures in `BeanInitializationException` (clear startup message); inference errors throw new `RerankerException` → mapped to HTTP 503 in `GlobalExceptionHandler` (no silent fallback score).
+- **temp-file cleanup**: temp model/tokenizer copies deleted eagerly after load (no `deleteOnExit` accumulation).
+- **#8 docker**: `docker-compose.yml` mounts `./src/main/resources/models/reranker` → `/app/models/reranker` and points `RERANKER_*_URI` at `file:` paths (binaries not baked into image).
+- **#6 tests**: added pool-clamp, empty-pool service tests + `GlobalExceptionHandlerTest` (503 mapping).
+
+Not changed: #1 (deferred), #5 (already null-guarded in `rerank`), #7 (dep-version verify — needs JDK: `./gradlew dependencies --configuration runtimeClasspath`).

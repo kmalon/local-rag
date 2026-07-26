@@ -28,9 +28,8 @@ public class QueryDocumentService implements QueryDocumentUseCase {
     public List<QueryResult> query(String question, int topK, Double score) {
         double scoreThreshold = score != null ? score : queryProperties.defaultScoreThreshold();
 
-        // Over-fetch a candidate pool by raw vector similarity (no threshold),
-        // then let the cross-encoder reranker decide final relevance.
-        List<QueryResult> candidates = vectorSearchPort.search(question, queryProperties.candidatePoolSize());
+        int poolSize = Math.max(queryProperties.candidatePoolSize(), topK);
+        List<QueryResult> candidates = vectorSearchPort.search(question, poolSize);
         List<QueryResult> reranked = rerankerPort.rerank(question, candidates);
 
         return reranked.stream()
