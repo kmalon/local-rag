@@ -1,0 +1,1 @@
+As Java Developer create 'integration-test' directory and move there integration test from /src/test/java.
