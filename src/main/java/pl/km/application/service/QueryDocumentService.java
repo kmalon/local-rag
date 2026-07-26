@@ -2,6 +2,7 @@ package pl.km.application.service;
 
 import org.springframework.stereotype.Service;
 import pl.km.application.port.in.QueryDocumentUseCase;
+import pl.km.application.port.out.RerankerPort;
 import pl.km.application.port.out.VectorSearchPort;
 import pl.km.config.QueryProperties;
 import pl.km.domain.model.QueryResult;
@@ -12,16 +13,28 @@ import java.util.List;
 public class QueryDocumentService implements QueryDocumentUseCase {
 
     private final VectorSearchPort vectorSearchPort;
+    private final RerankerPort rerankerPort;
     private final QueryProperties queryProperties;
 
-    public QueryDocumentService(VectorSearchPort vectorSearchPort, QueryProperties queryProperties) {
+    public QueryDocumentService(VectorSearchPort vectorSearchPort,
+                                RerankerPort rerankerPort,
+                                QueryProperties queryProperties) {
         this.vectorSearchPort = vectorSearchPort;
+        this.rerankerPort = rerankerPort;
         this.queryProperties = queryProperties;
     }
 
     @Override
     public List<QueryResult> query(String question, int topK, Double score) {
         double scoreThreshold = score != null ? score : queryProperties.defaultScoreThreshold();
-        return vectorSearchPort.search(question, topK, scoreThreshold);
+
+        int poolSize = Math.max(queryProperties.candidatePoolSize(), topK);
+        List<QueryResult> candidates = vectorSearchPort.search(question, poolSize);
+        List<QueryResult> reranked = rerankerPort.rerank(question, candidates);
+
+        return reranked.stream()
+                .filter(r -> r.score() >= scoreThreshold)
+                .limit(topK)
+                .toList();
     }
 }

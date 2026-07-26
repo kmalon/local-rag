@@ -45,3 +45,7 @@ bin/
 
 ### Secrets ###
 secrets/*.txt
+
+### reranker ###
+/src/main/resources/models/reranker/
+!/src/main/resources/models/reranker/README.md

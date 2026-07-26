@@ -18,4 +18,12 @@ rag:
     chunk-size: 1000
     overlap-ratio: 0.2
   query:
+    # Threshold now applies to the RERANKER (cross-encoder) score, not raw vector similarity.
     default-score-threshold: 0.75
+    # Number of candidates over-fetched from the vector store before reranking.
+    candidate-pool-size: 20
+  reranker:
+    # Local cross-encoder ONNX model + tokenizer (e.g. Xenova/ms-marco-MiniLM-L-6-v2).
+    # Override with file:/... or https://... URIs; classpath default expects files under resources/models/reranker/.
+    model-uri: ${RERANKER_MODEL_URI:classpath:models/reranker/model.onnx}
+    tokenizer-uri: ${RERANKER_TOKENIZER_URI:classpath:models/reranker/tokenizer.json}

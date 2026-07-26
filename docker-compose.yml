@@ -61,8 +61,12 @@ services:
       # Datasource username/password are read from /run/secrets via Spring's configtree
       SPRING_CONFIG_IMPORT: optional:configtree:/run/secrets/
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      RERANKER_MODEL_URI: ${RERANKER_MODEL_URI:-file:/app/models/reranker/model.onnx}
+      RERANKER_TOKENIZER_URI: ${RERANKER_TOKENIZER_URI:-file:/app/models/reranker/tokenizer.json}
       KEYCLOAK_ISSUER_URI: http://localhost:8081/realms/local-rag
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/local-rag/protocol/openid-connect/certs
+    volumes:
+      - ./src/main/resources/models/reranker:/app/models/reranker:ro
     secrets:
       - source: postgres_user
         target: spring.datasource.username

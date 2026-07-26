@@ -18,11 +18,12 @@ public class PgVectorSearchAdapter implements VectorSearchPort {
     }
 
     @Override
-    public List<QueryResult> search(String query, int topK, double scoreThreshold) {
+    public List<QueryResult> search(String query, int topK) {
+        // No similarity threshold here: the candidate pool is over-fetched and
+        // relevance filtering is delegated to the reranker (see QueryDocumentService).
         return vectorStore.similaritySearch(SearchRequest.builder()
                         .query(query)
                         .topK(topK)
-                        .similarityThreshold(scoreThreshold)
                         .build())
                 .stream()
                 .map(doc -> new QueryResult(
