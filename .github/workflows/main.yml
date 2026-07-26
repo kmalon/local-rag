@@ -1,0 +1,26 @@
+name: Ollama Cloud PR Review
+on:
+  pull_request:
+    types: [opened, synchronize]
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Review with Ollama Cloud
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+        run: |
+          DIFF=$(gh pr diff ${{ github.event.pull_request.number }})
+          REVIEW=$(curl -s https://ollama.com/v1/chat/completions \
+            -H "Authorization: Bearer $OLLAMA_API_KEY" \
+            -d "$(jq -n --arg d "$DIFF" '{
+              model:"gpt-oss:120b",
+              messages:[{role:"user",content:("Review this PR as a senior Java engineer. Flag only real issues — concurrency, resource leaks, transaction boundaries, null-handling, untested paths:\n\n"+$d)}]
+            }')" | jq -r '.choices[0].message.content')
+          gh pr comment ${{ github.event.pull_request.number }} --body "$REVIEW"
