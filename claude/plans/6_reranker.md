@@ -1,0 +1,1 @@
+As Java and AI Specialist add reranker do the query endpoint. Also, adjust response score threshold to be used from reranker not the vector db fetch output.

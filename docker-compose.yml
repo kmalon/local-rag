@@ -61,6 +61,10 @@ services:
       # Datasource username/password are read from /run/secrets via Spring's configtree
       SPRING_CONFIG_IMPORT: optional:configtree:/run/secrets/
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Optional: point the cross-encoder reranker at a mounted file or remote URL
+      # instead of the classpath default baked into the image.
+      RERANKER_MODEL_URI: ${RERANKER_MODEL_URI:-classpath:models/reranker/model.onnx}
+      RERANKER_TOKENIZER_URI: ${RERANKER_TOKENIZER_URI:-classpath:models/reranker/tokenizer.json}
       KEYCLOAK_ISSUER_URI: http://localhost:8081/realms/local-rag
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/local-rag/protocol/openid-connect/certs
     secrets:

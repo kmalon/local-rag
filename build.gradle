@@ -25,6 +25,10 @@ dependencies {
     implementation 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
     implementation 'org.springframework.ai:spring-ai-transformers'
     implementation 'org.springframework.ai:spring-ai-tika-document-reader'
+    // Cross-encoder reranker: HuggingFace tokenizer + ONNX Runtime inference.
+    // Versions align with those already pulled transitively by spring-ai-transformers (Spring AI 1.0.0).
+    implementation 'ai.djl.huggingface:tokenizers:0.30.0'
+    implementation 'com.microsoft.onnxruntime:onnxruntime:1.19.2'
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
