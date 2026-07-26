@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 import pl.km.application.exception.RerankerException;
 import pl.km.application.port.out.RerankerPort;
 import pl.km.config.RerankerProperties;
-import pl.km.domain.model.QueryResult;
+import pl.km.application.model.QueryResult;
 
 import java.io.IOException;
 import java.io.InputStream;

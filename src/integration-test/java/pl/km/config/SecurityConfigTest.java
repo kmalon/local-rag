@@ -10,9 +10,9 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import pl.km.adapter.in.rest.DocumentController;
-import pl.km.application.port.in.IngestDocumentUseCase;
-import pl.km.application.port.in.IngestFileUseCase;
-import pl.km.application.port.in.QueryDocumentUseCase;
+import pl.km.application.port.in.IngestDocumentPort;
+import pl.km.application.port.in.IngestFilePort;
+import pl.km.application.port.in.QueryDocumentPort;
 
 import java.util.List;
 
@@ -35,11 +35,11 @@ class SecurityConfigTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private IngestDocumentUseCase ingestDocumentUseCase;
+    private IngestDocumentPort ingestDocumentPort;
     @MockBean
-    private IngestFileUseCase ingestFileUseCase;
+    private IngestFilePort ingestFilePort;
     @MockBean
-    private QueryDocumentUseCase queryDocumentUseCase;
+    private QueryDocumentPort queryDocumentPort;
 
     private static final String QUERY_BODY = "{\"question\":\"hi\",\"topK\":5,\"score\":null}";
     private static final String INGEST_BODY = "{\"name\":\"doc\",\"content\":\"body\"}";
@@ -53,7 +53,7 @@ class SecurityConfigTest {
 
     @Test
     void queryAllowedForRagUser() throws Exception {
-        when(queryDocumentUseCase.query(any(), anyInt(), any())).thenReturn(List.of());
+        when(queryDocumentPort.query(any(), anyInt(), any())).thenReturn(List.of());
         mockMvc.perform(post("/api/documents/query")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_rag_user")))
                         .contentType(MediaType.APPLICATION_JSON).content(QUERY_BODY))

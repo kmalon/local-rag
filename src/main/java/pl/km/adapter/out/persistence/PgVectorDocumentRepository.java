@@ -18,7 +18,7 @@ public class PgVectorDocumentRepository implements DocumentVectorRepository {
     }
 
     @Override
-    public void save(pl.km.domain.model.Document document, float[] embedding) {
+    public void save(pl.km.application.model.Document document, float[] embedding) {
         Document aiDoc = Document.builder()
                 .id(document.id().toString())
                 .text(document.content())

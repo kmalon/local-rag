@@ -1,19 +1,18 @@
-package pl.km.application.service;
+package pl.km.application;
 
-import org.springframework.stereotype.Service;
-import pl.km.application.port.in.IngestDocumentUseCase;
-import pl.km.application.port.in.IngestFileUseCase;
+import org.springframework.transaction.annotation.Transactional;
+import pl.km.application.model.Document;
+import pl.km.application.port.in.IngestDocumentPort;
+import pl.km.application.port.in.IngestFilePort;
 import pl.km.application.port.out.DocumentVectorRepository;
 import pl.km.application.port.out.EmbeddingPort;
 import pl.km.application.port.out.FileParserPort;
 import pl.km.application.port.out.TextSplitterPort;
-import pl.km.domain.model.Document;
 
 import java.io.InputStream;
 import java.util.List;
 
-@Service
-public class IngestDocumentService implements IngestDocumentUseCase, IngestFileUseCase {
+public class IngestDocumentService implements IngestDocumentPort, IngestFilePort {
 
     private final EmbeddingPort embeddingPort;
     private final DocumentVectorRepository documentVectorRepository;
@@ -21,7 +20,7 @@ public class IngestDocumentService implements IngestDocumentUseCase, IngestFileU
     private final TextSplitterPort textSplitterPort;
 
     public IngestDocumentService(EmbeddingPort embeddingPort, DocumentVectorRepository documentVectorRepository,
-                                  FileParserPort fileParserPort, TextSplitterPort textSplitterPort) {
+                                 FileParserPort fileParserPort, TextSplitterPort textSplitterPort) {
         this.embeddingPort = embeddingPort;
         this.documentVectorRepository = documentVectorRepository;
         this.fileParserPort = fileParserPort;
@@ -29,6 +28,7 @@ public class IngestDocumentService implements IngestDocumentUseCase, IngestFileU
     }
 
     @Override
+    @Transactional
     public void ingest(String name, String content) {
         List<String> chunks = textSplitterPort.split(content);
         for (int i = 0; i < chunks.size(); i++) {
@@ -39,6 +39,7 @@ public class IngestDocumentService implements IngestDocumentUseCase, IngestFileU
     }
 
     @Override
+    @Transactional
     public void ingest(String filename, InputStream inputStream) {
         String content = fileParserPort.parse(filename, inputStream);
         ingest(filename, content);
