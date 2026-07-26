@@ -1,5 +1,6 @@
 package pl.km.application;
 
+import org.springframework.transaction.annotation.Transactional;
 import pl.km.application.model.Document;
 import pl.km.application.port.in.IngestDocumentPort;
 import pl.km.application.port.in.IngestFilePort;
@@ -27,6 +28,7 @@ public class IngestDocumentService implements IngestDocumentPort, IngestFilePort
     }
 
     @Override
+    @Transactional
     public void ingest(String name, String content) {
         List<String> chunks = textSplitterPort.split(content);
         for (int i = 0; i < chunks.size(); i++) {
@@ -37,6 +39,7 @@ public class IngestDocumentService implements IngestDocumentPort, IngestFilePort
     }
 
     @Override
+    @Transactional
     public void ingest(String filename, InputStream inputStream) {
         String content = fileParserPort.parse(filename, inputStream);
         ingest(filename, content);

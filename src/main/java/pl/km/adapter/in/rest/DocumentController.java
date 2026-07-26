@@ -12,6 +12,7 @@ import pl.km.application.port.in.IngestFilePort;
 import pl.km.application.port.in.QueryDocumentPort;
 
 import java.io.IOException;
+import java.io.InputStream;
 
 @RestController
 @RequestMapping("/api/documents")
@@ -37,7 +38,13 @@ public class DocumentController {
 
     @PostMapping("/ingest/file")
     public ResponseEntity<Void> ingestFile(@RequestParam("file") MultipartFile file) throws IOException {
-        ingestFilePort.ingest(file.getOriginalFilename(), file.getInputStream());
+        String filename = file.getOriginalFilename();
+        if (filename == null || filename.isBlank()) {
+            return ResponseEntity.badRequest().build();
+        }
+        try (InputStream inputStream = file.getInputStream()) {
+            ingestFilePort.ingest(filename, inputStream);
+        }
         return ResponseEntity.ok().build();
     }
 
