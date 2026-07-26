@@ -34,6 +34,31 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
 }
 
+sourceSets {
+    integrationTest {
+        java.srcDir 'src/integration-test/java'
+        resources.srcDir 'src/integration-test/resources'
+        compileClasspath += sourceSets.main.output + sourceSets.test.output
+        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
 test {
     useJUnitPlatform()
 }
+
+tasks.register('integrationTest', Test) {
+    description = 'Runs integration tests.'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter test
+}
+
+tasks.named('check') { dependsOn 'integrationTest' }
