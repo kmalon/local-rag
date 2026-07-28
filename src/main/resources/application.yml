@@ -20,6 +20,9 @@ spring:
 keycloak:
   issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/local-rag}
   jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8081/realms/local-rag/protocol/openid-connect/certs}
+  # This server's identifier; tokens must carry it in `aud` (see the audience mapper
+  # on rag-client in keycloak/realm-local-rag.json).
+  audience: ${KEYCLOAK_AUDIENCE:local-rag-api}
 
 rag:
   chunking:

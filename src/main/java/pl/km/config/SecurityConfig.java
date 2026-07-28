@@ -11,8 +11,11 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -37,6 +40,12 @@ import java.util.Map;
  * <p>Signing keys are fetched from {@code keycloak.jwk-set-uri} (reachable over the
  * docker network) while the token {@code iss} claim is validated against
  * {@code keycloak.issuer-uri} (the public host URL).
+ *
+ * <p>Tokens must also be addressed to this resource server: the {@code aud} claim has
+ * to contain {@code keycloak.audience}. Without that check any token minted in the
+ * realm — including one issued to an unrelated client — would be accepted here, which
+ * is the confused-deputy risk the MCP authorization spec (RFC 8707 resource
+ * indicators) exists to close.
  */
 @Configuration
 @EnableWebSecurity
@@ -68,15 +77,29 @@ public class SecurityConfig {
 
     /**
      * Decoder that fetches JWKS from the (internal) {@code jwk-set-uri} but validates
-     * the {@code iss} claim against the (public) {@code issuer-uri}.
+     * the {@code iss} claim against the (public) {@code issuer-uri}, plus the
+     * {@code aud} claim against this server's own identifier.
      */
     @Bean
     public JwtDecoder jwtDecoder(@Value("${keycloak.jwk-set-uri}") String jwkSetUri,
-                                 @Value("${keycloak.issuer-uri}") String issuerUri) {
+                                 @Value("${keycloak.issuer-uri}") String issuerUri,
+                                 @Value("${keycloak.audience}") String audience) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
-        OAuth2TokenValidator<Jwt> validator = JwtValidators.createDefaultWithIssuer(issuerUri);
+        OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
+                JwtValidators.createDefaultWithIssuer(issuerUri),
+                audienceValidator(audience));
         decoder.setJwtValidator(validator);
         return decoder;
+    }
+
+    /**
+     * Rejects tokens whose {@code aud} claim does not list this resource server.
+     * A missing claim fails too: Keycloak only emits {@code aud} when an audience
+     * mapper is configured, so its absence means the token was never scoped to us.
+     */
+    static OAuth2TokenValidator<Jwt> audienceValidator(String audience) {
+        return new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
+                aud -> aud != null && aud.contains(audience));
     }
 
     @Bean
