@@ -74,7 +74,8 @@ spring.ai.mcp.server:
 ### 5. Keycloak
 `keycloak/realm-local-rag.json`:
 - realm role `rag_mcp_user`; added to `realmRoles` of both users `Admin` and `User`.
-- `oidc-audience-mapper` on `rag-client` with `included.custom.audience = http://localhost:8080/mcp`, `access.token.claim=true`, `id.token.claim=false`.
+- **optional** client scope `mcp-api` holding an `oidc-audience-mapper` (`included.custom.audience = http://localhost:8080/mcp`, `access.token.claim=true`, `id.token.claim=false`) → audience is opt-in: callers request `scope=openid mcp-api`.
+- `rag-client` lists `defaultClientScopes` explicitly (`acr basic email profile roles web-origins`) — Keycloak replaces, not merges, a client's scope set once `optionalClientScopes` is given, and dropping `roles` would kill the `realm_access` claim every role check depends on.
 
 ### 6. Tests
 - Unit `src/test/java/pl/km/mcp/RagMcpToolsTest`: mocked `RagFacade` — default topK=5 when null/≤0, args passed through.
@@ -99,8 +100,10 @@ Not done: Keycloak 26 ignores RFC 8707 `resource` param (aud comes from mapper r
 
 ## Verification
 - `./gradlew clean check` — **done, 25 tests green** (13 unit / 12 integration). Note: container `pids.max=256`; kill stale Gradle JVMs first or test workers die with `pthread_create EAGAIN`.
-- `docker compose down -v && docker compose up --build` — **realm re-import required**, old tokens lack `aud`. Token: `curl -d client_id=rag-client -d username=Admin -d password=<secret> -d grant_type=password http://localhost:8081/realms/local-rag/protocol/openid-connect/token`.
-- Check claim: `… | jq -r .access_token | cut -d. -f2 | base64 -d | jq .aud` → `http://localhost:8080/mcp`.
+- `docker compose down -v && docker compose up --build` — **realm re-import required**, old tokens lack `aud`. Token: `curl -d client_id=rag-client -d username=Admin -d password=<secret> -d grant_type=password -d scope="openid mcp-api" http://localhost:8081/realms/local-rag/protocol/openid-connect/token`.
+- Check claim: `… | jq -r .access_token | cut -d. -f2 | base64 -d | jq '.aud, .realm_access.roles'` → aud has `http://localhost:8080/mcp`, roles non-empty.
+- **First-boot check** (realm import with an explicit `clientScopes` array historically suppressed the built-in scopes, keycloak/keycloak#10021): if `realm_access.roles` is missing or Admin Console shows no `roles` scope on rag-client, the built-ins were not created → add them to the import or assign via kcadm.
+- Without `scope=openid mcp-api` the token has no MCP audience → `/mcp/sse` 401, `/api/documents/query` still 200.
 - `curl -s http://localhost:8080/.well-known/oauth-protected-resource | jq` → metadata, no token needed.
 - `curl -N -H "Authorization: Bearer $T" http://localhost:8080/mcp/sse` → SSE `endpoint` event; no token → 401 + `WWW-Authenticate: … resource_metadata="…"`; user lacking `rag_mcp_user` → 403.
 - Ingest a doc via `/api/documents/ingest` (Admin), then MCP `tools/list` + `tools/call search_rag_documents` over the SSE session → chunk returned. **Not yet run** (needs the stack up).

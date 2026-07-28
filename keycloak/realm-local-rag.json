@@ -19,6 +19,19 @@
       "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
       "webOrigins": ["+"],
       "protocol": "openid-connect",
+      "defaultClientScopes": ["acr", "basic", "email", "profile", "roles", "web-origins"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt", "mcp-api"]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "mcp-api",
+      "description": "Access to the MCP server; adds its resource identifier to the token audience",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
       "protocolMappers": [
         {
           "name": "mcp-resource-audience",
