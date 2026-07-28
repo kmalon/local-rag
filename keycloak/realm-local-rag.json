@@ -20,13 +20,13 @@
       "webOrigins": ["+"],
       "protocol": "openid-connect",
       "defaultClientScopes": ["acr", "basic", "email", "profile", "roles", "web-origins"],
-      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt", "mcp-api"]
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt", "rag-api", "mcp-api"]
     }
   ],
   "clientScopes": [
     {
-      "name": "mcp-api",
-      "description": "Access to the MCP server; adds its resource identifier to the token audience",
+      "name": "rag-api",
+      "description": "Access to the REST API; adds the shared platform audience, valid across platform APIs",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -34,11 +34,32 @@
       },
       "protocolMappers": [
         {
-          "name": "mcp-resource-audience",
+          "name": "rag-platform-audience",
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "included.custom.audience": "http://localhost:8080/mcp",
+            "included.custom.audience": "rag-platform",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "name": "mcp-api",
+      "description": "Access to the MCP server; adds an MCP-only audience so the token is useless elsewhere",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      },
+      "protocolMappers": [
+        {
+          "name": "mcp-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "rag_mcp",
             "id.token.claim": "false",
             "access.token.claim": "true"
           }

@@ -65,6 +65,8 @@ services:
       RERANKER_TOKENIZER_URI: ${RERANKER_TOKENIZER_URI:-file:/app/models/reranker/tokenizer.json}
       KEYCLOAK_ISSUER_URI: http://localhost:8081/realms/local-rag
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/local-rag/protocol/openid-connect/certs
+      API_AUDIENCE: rag-platform
+      MCP_AUDIENCE: rag_mcp
       MCP_RESOURCE: http://localhost:8080/mcp
     volumes:
       - ./src/main/resources/models/reranker:/app/models/reranker:ro

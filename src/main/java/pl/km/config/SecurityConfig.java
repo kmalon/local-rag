@@ -44,18 +44,20 @@ import java.util.Map;
  * docker network) while the token {@code iss} claim is validated against
  * {@code keycloak.issuer-uri} (the public host URL).
  *
- * <p>Two chains, because the two surfaces validate tokens differently:
+ * <p>Two chains, because the two surfaces demand different audiences:
  * <ul>
- *   <li>{@code /mcp/**} additionally requires {@code aud} to contain
- *       {@code mcp.resource}, as the MCP authorization spec (RFC 8707 resource
- *       indicators) demands, and answers 401 with an RFC 9728 {@code resource_metadata}
- *       hint. Without the audience check any realm token would open the MCP server,
- *       including one a user granted to an unrelated client — the confused-deputy
- *       problem that matters most for agent traffic.</li>
- *   <li>everything else accepts any correctly-signed token from the realm, so callers
- *       presenting tokens minted for their own clients keep working. Authorisation
- *       there rests on the {@code rag_admin}/{@code rag_user} realm roles alone.</li>
+ *   <li>{@code /mcp/**} requires {@code keycloak.audience.mcp} — narrow and
+ *       MCP-specific, so a token an agent holds cannot be replayed against the
+ *       platform's other APIs. It also answers 401 with an RFC 9728
+ *       {@code resource_metadata} hint.</li>
+ *   <li>everything else requires {@code keycloak.audience.api} — a broad identifier
+ *       shared by the platform's ordinary APIs, so one token serves them all.</li>
  * </ul>
+ *
+ * <p>Either way a token is only accepted where it was addressed, which is what stops
+ * a service that receives a token from turning around and using it elsewhere.
+ * Authorisation on top of that still rests on the {@code rag_admin}/{@code rag_user}/
+ * {@code rag_mcp_user} realm roles.
  */
 @Configuration
 @EnableWebSecurity
@@ -71,6 +73,7 @@ public class SecurityConfig {
     public SecurityFilterChain mcpFilterChain(HttpSecurity http,
                                               @Value("${keycloak.jwk-set-uri}") String jwkSetUri,
                                               @Value("${keycloak.issuer-uri}") String issuerUri,
+                                              @Value("${keycloak.audience.mcp}") String audience,
                                               @Value("${mcp.resource}") String resource) throws Exception {
         http
                 .securityMatcher("/mcp/**")
@@ -80,7 +83,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth.anyRequest().hasRole("rag_mcp_user"))
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
-                                .decoder(jwtDecoder(jwkSetUri, issuerUri, audienceValidator(resource)))
+                                .decoder(jwtDecoder(jwkSetUri, issuerUri, audienceValidator(audience)))
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter()))
                         .authenticationEntryPoint(new ResourceMetadataEntryPoint(resource)));
         return http.build();
@@ -93,7 +96,8 @@ public class SecurityConfig {
     @Order(2)
     public SecurityFilterChain apiFilterChain(HttpSecurity http,
                                               @Value("${keycloak.jwk-set-uri}") String jwkSetUri,
-                                              @Value("${keycloak.issuer-uri}") String issuerUri) throws Exception {
+                                              @Value("${keycloak.issuer-uri}") String issuerUri,
+                                              @Value("${keycloak.audience.api}") String audience) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
@@ -112,7 +116,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
-                                .decoder(jwtDecoder(jwkSetUri, issuerUri))
+                                .decoder(jwtDecoder(jwkSetUri, issuerUri, audienceValidator(audience)))
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter())));
         return http.build();
     }

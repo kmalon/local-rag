@@ -20,11 +20,17 @@ spring:
 keycloak:
   issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/local-rag}
   jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8081/realms/local-rag/protocol/openid-connect/certs}
+  audience:
+    # Broad: shared by the platform's ordinary APIs, so one token serves them all.
+    # Supplied by the `rag-api` client scope.
+    api: ${API_AUDIENCE:rag-platform}
+    # Narrow: MCP only, so an agent's token cannot be replayed against other APIs.
+    # Supplied by the `mcp-api` client scope.
+    mcp: ${MCP_AUDIENCE:rag_mcp}
 
 mcp:
-  # RFC 9728 resource identifier of the MCP server. Doubles as the required `aud` value
-  # (RFC 8707), injected by the audience mapper on rag-client in
-  # keycloak/realm-local-rag.json. Not applied to the REST API.
+  # RFC 9728 resource identifier of the MCP server (a URI, unlike the `aud` value above).
+  # Drives the metadata document and the well-known path in the 401 challenge.
   resource: ${MCP_RESOURCE:http://localhost:8080/mcp}
 
 rag:
