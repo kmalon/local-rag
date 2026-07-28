@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -25,6 +26,8 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -41,11 +44,18 @@ import java.util.Map;
  * docker network) while the token {@code iss} claim is validated against
  * {@code keycloak.issuer-uri} (the public host URL).
  *
- * <p>Tokens must also be addressed to this resource server: the {@code aud} claim has
- * to contain {@code keycloak.audience}. Without that check any token minted in the
- * realm — including one issued to an unrelated client — would be accepted here, which
- * is the confused-deputy risk the MCP authorization spec (RFC 8707 resource
- * indicators) exists to close.
+ * <p>Two chains, because the two surfaces validate tokens differently:
+ * <ul>
+ *   <li>{@code /mcp/**} additionally requires {@code aud} to contain
+ *       {@code mcp.resource}, as the MCP authorization spec (RFC 8707 resource
+ *       indicators) demands, and answers 401 with an RFC 9728 {@code resource_metadata}
+ *       hint. Without the audience check any realm token would open the MCP server,
+ *       including one a user granted to an unrelated client — the confused-deputy
+ *       problem that matters most for agent traffic.</li>
+ *   <li>everything else accepts any correctly-signed token from the realm, so callers
+ *       presenting tokens minted for their own clients keep working. Authorisation
+ *       there rests on the {@code rag_admin}/{@code rag_user} realm roles alone.</li>
+ * </ul>
  */
 @Configuration
 @EnableWebSecurity
@@ -53,42 +63,73 @@ public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
+    /**
+     * MCP chain; ordered first so {@code /mcp/**} never falls through to the API chain.
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    @Order(1)
+    public SecurityFilterChain mcpFilterChain(HttpSecurity http,
+                                              @Value("${keycloak.jwk-set-uri}") String jwkSetUri,
+                                              @Value("${keycloak.issuer-uri}") String issuerUri,
+                                              @Value("${mcp.resource}") String resource) throws Exception {
+        http
+                .securityMatcher("/mcp/**")
+                .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth.anyRequest().hasRole("rag_mcp_user"))
+                .oauth2ResourceServer(oauth2 -> oauth2
+                        .jwt(jwt -> jwt
+                                .decoder(jwtDecoder(jwkSetUri, issuerUri, audienceValidator(resource)))
+                                .jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                        .authenticationEntryPoint(new ResourceMetadataEntryPoint(resource)));
+        return http.build();
+    }
+
+    /**
+     * REST API chain, plus the public RFC 9728 metadata document.
+     */
+    @Bean
+    @Order(2)
+    public SecurityFilterChain apiFilterChain(HttpSecurity http,
+                                              @Value("${keycloak.jwk-set-uri}") String jwkSetUri,
+                                              @Value("${keycloak.issuer-uri}") String issuerUri) throws Exception {
         http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Discovery document: readable without a token, by design.
+                        .requestMatchers("/.well-known/oauth-protected-resource",
+                                "/.well-known/oauth-protected-resource/**")
+                        .permitAll()
                         // Method-agnostic: the role is required for every method on these
                         // paths, so a non-POST request cannot slip past the role check.
                         .requestMatchers("/api/documents/ingest", "/api/documents/ingest/file")
                         .hasRole("rag_admin")
                         .requestMatchers("/api/documents/query")
                         .hasRole("rag_user")
-                        // MCP server transport (SSE stream + message endpoint).
-                        .requestMatchers("/mcp/**")
-                        .hasRole("rag_mcp_user")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
+                        .jwt(jwt -> jwt
+                                .decoder(jwtDecoder(jwkSetUri, issuerUri))
+                                .jwtAuthenticationConverter(jwtAuthenticationConverter())));
         return http.build();
     }
 
     /**
      * Decoder that fetches JWKS from the (internal) {@code jwk-set-uri} but validates
-     * the {@code iss} claim against the (public) {@code issuer-uri}, plus the
-     * {@code aud} claim against this server's own identifier.
+     * the {@code iss} claim against the (public) {@code issuer-uri}. Each chain builds
+     * its own so they can differ in the extra validators applied.
      */
-    @Bean
-    public JwtDecoder jwtDecoder(@Value("${keycloak.jwk-set-uri}") String jwkSetUri,
-                                 @Value("${keycloak.issuer-uri}") String issuerUri,
-                                 @Value("${keycloak.audience}") String audience) {
+    @SafeVarargs
+    private static JwtDecoder jwtDecoder(String jwkSetUri, String issuerUri,
+                                         OAuth2TokenValidator<Jwt>... extraValidators) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
-        OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefaultWithIssuer(issuerUri),
-                audienceValidator(audience));
-        decoder.setJwtValidator(validator);
+        List<OAuth2TokenValidator<Jwt>> validators = new ArrayList<>();
+        validators.add(JwtValidators.createDefaultWithIssuer(issuerUri));
+        validators.addAll(Arrays.asList(extraValidators));
+        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(validators));
         return decoder;
     }
 

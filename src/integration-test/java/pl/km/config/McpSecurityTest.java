@@ -14,8 +14,10 @@ import pl.km.rag.application.port.in.IngestFilePort;
 import pl.km.rag.application.port.in.QueryDocumentPort;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -28,7 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "keycloak.issuer-uri=http://localhost:8081/realms/local-rag",
         "keycloak.jwk-set-uri=http://localhost:8081/realms/local-rag/protocol/openid-connect/certs",
-        "keycloak.audience=local-rag-api"
+        "mcp.resource=http://localhost:8080/mcp"
 })
 class McpSecurityTest {
 
@@ -48,6 +50,14 @@ class McpSecurityTest {
     void mcpRequiresAuthentication() throws Exception {
         mockMvc.perform(get(MCP_SSE))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unauthenticatedChallengePointsAtResourceMetadata() throws Exception {
+        mockMvc.perform(get(MCP_SSE))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", containsString(
+                        "resource_metadata=\"http://localhost:8080/.well-known/oauth-protected-resource/mcp\"")));
     }
 
     @Test

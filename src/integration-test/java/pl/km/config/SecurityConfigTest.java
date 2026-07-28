@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "keycloak.issuer-uri=http://localhost:8081/realms/local-rag",
         "keycloak.jwk-set-uri=http://localhost:8081/realms/local-rag/protocol/openid-connect/certs",
-        "keycloak.audience=local-rag-api"
+        "mcp.resource=http://localhost:8080/mcp"
 })
 class SecurityConfigTest {
 

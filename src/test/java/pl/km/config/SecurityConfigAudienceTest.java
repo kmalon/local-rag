@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SecurityConfigAudienceTest {
 
-    private static final String AUDIENCE = "local-rag-api";
+    private static final String AUDIENCE = "http://localhost:8080/mcp";
 
     private final OAuth2TokenValidator<Jwt> validator = SecurityConfig.audienceValidator(AUDIENCE);
 
@@ -33,14 +33,14 @@ class SecurityConfigAudienceTest {
     @Test
     void acceptsTokenListingThisServerAmongSeveralAudiences() {
         OAuth2TokenValidatorResult result =
-                validator.validate(jwtWithAudience(List.of("other-api", AUDIENCE)));
+                validator.validate(jwtWithAudience(List.of("http://other/api", AUDIENCE)));
 
         assertThat(result.hasErrors()).isFalse();
     }
 
     @Test
     void rejectsTokenMintedForAnotherAudience() {
-        OAuth2TokenValidatorResult result = validator.validate(jwtWithAudience(List.of("other-api")));
+        OAuth2TokenValidatorResult result = validator.validate(jwtWithAudience(List.of("http://other/api")));
 
         assertThat(result.hasErrors()).isTrue();
     }
