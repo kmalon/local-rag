@@ -9,10 +9,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import pl.km.adapter.in.rest.DocumentController;
-import pl.km.application.port.in.IngestDocumentPort;
-import pl.km.application.port.in.IngestFilePort;
-import pl.km.application.port.in.QueryDocumentPort;
+import pl.km.rag.adapter.in.rest.DocumentController;
+import pl.km.rag.application.port.in.IngestDocumentPort;
+import pl.km.rag.application.port.in.IngestFilePort;
+import pl.km.rag.application.port.in.QueryDocumentPort;
 
 import java.util.List;
 

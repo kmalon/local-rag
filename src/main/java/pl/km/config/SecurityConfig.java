@@ -27,9 +27,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Secures the REST API as an OAuth2 Resource Server validating Keycloak-issued JWTs.
- * Ingestion endpoints require the {@code rag_admin} realm role; the query (read)
- * endpoint requires {@code rag_user}. Keycloak places realm roles under the
+ * Secures the REST API and the MCP server as an OAuth2 Resource Server validating
+ * Keycloak-issued JWTs. Ingestion endpoints require the {@code rag_admin} realm role;
+ * the query (read) endpoint requires {@code rag_user}; the MCP endpoints require
+ * {@code rag_mcp_user}. Keycloak places realm roles under the
  * {@code realm_access.roles} claim, so a custom converter maps them to Spring
  * {@code ROLE_}-prefixed authorities.
  *
@@ -56,6 +57,9 @@ public class SecurityConfig {
                         .hasRole("rag_admin")
                         .requestMatchers("/api/documents/query")
                         .hasRole("rag_user")
+                        // MCP server transport (SSE stream + message endpoint).
+                        .requestMatchers("/mcp/**")
+                        .hasRole("rag_mcp_user")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));

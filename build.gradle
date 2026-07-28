@@ -25,6 +25,8 @@ dependencies {
     implementation 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
     implementation 'org.springframework.ai:spring-ai-transformers'
     implementation 'org.springframework.ai:spring-ai-tika-document-reader'
+    // MCP server (SSE over Spring MVC) exposing the RAG knowledge base to AI agents.
+    implementation 'org.springframework.ai:spring-ai-starter-mcp-server-webmvc'
     // Cross-encoder reranker: HuggingFace tokenizer + ONNX Runtime inference.
     // Versions align with those already pulled transitively by spring-ai-transformers (Spring AI 1.0.0).
     implementation 'ai.djl.huggingface:tokenizers:0.30.0'

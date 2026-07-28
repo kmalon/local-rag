@@ -8,6 +8,14 @@ spring:
       pgvector:
         initialize-schema: true
         dimensions: 384
+    mcp:
+      server:
+        name: local-rag-mcp
+        version: 1.0.0
+        type: SYNC
+        # Kept under /mcp/** so a single security rule covers stream + messages.
+        sse-endpoint: /mcp/sse
+        sse-message-endpoint: /mcp/message
 
 keycloak:
   issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/local-rag}

@@ -5,7 +5,8 @@
   "roles": {
     "realm": [
       { "name": "rag_admin", "description": "Full access: ingestion and query" },
-      { "name": "rag_user", "description": "Read access: query only" }
+      { "name": "rag_user", "description": "Read access: query only" },
+      { "name": "rag_mcp_user", "description": "MCP access: query via the MCP server" }
     ]
   },
   "clients": [
@@ -28,7 +29,7 @@
       "credentials": [
         { "type": "password", "value": "__RAG_ADMIN_PASSWORD__", "temporary": false }
       ],
-      "realmRoles": ["rag_admin", "rag_user"]
+      "realmRoles": ["rag_admin", "rag_user", "rag_mcp_user"]
     },
     {
       "username": "User",
@@ -37,7 +38,7 @@
       "credentials": [
         { "type": "password", "value": "__RAG_USER_PASSWORD__", "temporary": false }
       ],
-      "realmRoles": ["rag_user"]
+      "realmRoles": ["rag_user", "rag_mcp_user"]
     }
   ]
 }
