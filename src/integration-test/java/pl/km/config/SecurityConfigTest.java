@@ -9,10 +9,10 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
-import pl.km.adapter.in.rest.DocumentController;
-import pl.km.application.port.in.IngestDocumentPort;
-import pl.km.application.port.in.IngestFilePort;
-import pl.km.application.port.in.QueryDocumentPort;
+import pl.km.rag.adapter.in.rest.DocumentController;
+import pl.km.rag.application.port.in.IngestDocumentPort;
+import pl.km.rag.application.port.in.IngestFilePort;
+import pl.km.rag.application.port.in.QueryDocumentPort;
 
 import java.util.List;
 
@@ -27,7 +27,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(SecurityConfig.class)
 @TestPropertySource(properties = {
         "keycloak.issuer-uri=http://localhost:8081/realms/local-rag",
-        "keycloak.jwk-set-uri=http://localhost:8081/realms/local-rag/protocol/openid-connect/certs"
+        "keycloak.jwk-set-uri=http://localhost:8081/realms/local-rag/protocol/openid-connect/certs",
+        "keycloak.audience.api=rag-platform",
+        "keycloak.audience.mcp=rag-mcp",
+        "mcp.resource=http://localhost:8080/mcp"
 })
 class SecurityConfigTest {
 

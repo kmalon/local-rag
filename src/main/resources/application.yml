@@ -8,10 +8,31 @@ spring:
       pgvector:
         initialize-schema: true
         dimensions: 384
+    mcp:
+      server:
+        name: local-rag-mcp
+        # Reported to clients in the MCP handshake; keep in step with the Gradle project version.
+        version: ${MCP_SERVER_VERSION:1.0-SNAPSHOT}
+        type: SYNC
+        # Kept under /mcp/** so a single security rule covers stream + messages.
+        sse-endpoint: /mcp/sse
+        sse-message-endpoint: /mcp/message
 
 keycloak:
   issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/local-rag}
   jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8081/realms/local-rag/protocol/openid-connect/certs}
+  audience:
+    # Broad: shared by the platform's ordinary APIs, so one token serves them all.
+    # Supplied by the `rag-api` client scope, held only by `rag-api-client`.
+    api: ${API_AUDIENCE:rag-platform}
+    # Narrow: MCP only, so an agent's token cannot be replayed against other APIs.
+    # Supplied by the `rag-mcp-api` client scope, held only by `rag-mcp-client`.
+    mcp: ${MCP_AUDIENCE:rag-mcp}
+
+mcp:
+  # RFC 9728 resource identifier of the MCP server (a URI, unlike the `aud` value above).
+  # Drives the metadata document and the well-known path in the 401 challenge.
+  resource: ${MCP_RESOURCE:http://localhost:8080/mcp}
 
 rag:
   chunking:
