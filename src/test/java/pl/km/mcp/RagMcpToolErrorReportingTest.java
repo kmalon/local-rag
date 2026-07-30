@@ -1,7 +1,7 @@
 package pl.km.mcp;
 
-import io.modelcontextprotocol.server.McpServerFeatures;
-import io.modelcontextprotocol.server.McpSyncServerExchange;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.mcp.McpToolUtils;
@@ -33,7 +33,7 @@ import static org.mockito.Mockito.when;
  * <p>
  * A unit test despite exercising third-party code: it starts no Spring context, which is the
  * line this project draws between {@code src/test} and {@code src/integration-test}. The
- * HTTP/SSE transport in front of it is covered by {@code McpSecurityTest}.
+ * Streamable HTTP transport in front of it is covered by {@code McpSecurityTest}.
  */
 class RagMcpToolErrorReportingTest {
 
@@ -41,15 +41,17 @@ class RagMcpToolErrorReportingTest {
 
     private final QueryDocumentPort queryDocumentPort = mock(QueryDocumentPort.class);
 
-    private McpServerFeatures.SyncToolSpecification searchTool() {
+    private McpStatelessServerFeatures.SyncToolSpecification searchTool() {
         RagMcpTools tools = new RagMcpTools(new DefaultRagFacade(queryDocumentPort));
         ToolCallback[] callbacks = MethodToolCallbackProvider.builder().toolObjects(tools).build().getToolCallbacks();
         assertThat(callbacks).hasSize(1);
-        return McpToolUtils.toSyncToolSpecification(callbacks[0], JSON);
+        return McpToolUtils.toStatelessSyncToolSpecification(callbacks[0], JSON);
     }
 
     private McpSchema.CallToolResult callSearch() {
-        return searchTool().call().apply(mock(McpSyncServerExchange.class), Map.of("question", "anything"));
+        return searchTool().callHandler().apply(
+                McpTransportContext.EMPTY,
+                new McpSchema.CallToolRequest("search_rag_documents", Map.of("question", "anything")));
     }
 
     private static String textOf(McpSchema.CallToolResult result) {

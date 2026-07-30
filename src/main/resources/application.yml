@@ -14,9 +14,14 @@ spring:
         # Reported to clients in the MCP handshake; keep in step with the Gradle project version.
         version: ${MCP_SERVER_VERSION:1.0-SNAPSHOT}
         type: SYNC
-        # Kept under /mcp/** so a single security rule covers stream + messages.
-        sse-endpoint: /mcp/sse
-        sse-message-endpoint: /mcp/message
+        # Streamable HTTP without sessions: every tools/call is a self-contained POST
+        # answered with a JSON body — no session id, no SSE stream, no server-initiated
+        # traffic. Matches the stateless bearer-token model the filter chains already use.
+        protocol: STATELESS
+        # Single endpoint, matched by the MCP security chain, and the same URI the
+        # RFC 9728 metadata below advertises as the protected resource.
+        streamable-http:
+          mcp-endpoint: /mcp
 
 keycloak:
   issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/local-rag}

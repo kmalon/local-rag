@@ -3,11 +3,11 @@ package pl.km.config;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import pl.km.rag.adapter.in.rest.DocumentController;
 import pl.km.rag.application.port.in.IngestDocumentPort;
@@ -37,11 +37,11 @@ class SecurityConfigTest {
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     private IngestDocumentPort ingestDocumentPort;
-    @MockBean
+    @MockitoBean
     private IngestFilePort ingestFilePort;
-    @MockBean
+    @MockitoBean
     private QueryDocumentPort queryDocumentPort;
 
     private static final String QUERY_BODY = "{\"question\":\"hi\",\"topK\":5,\"score\":null}";

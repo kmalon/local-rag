@@ -157,8 +157,43 @@ Still open: rename `pl.km.shared.rag` → `pl.km.ragapi` (it is a published API 
 - `curl -N -H "Authorization: Bearer $T" http://localhost:8080/mcp/sse` → SSE `endpoint` event; no token → 401 + `WWW-Authenticate: … resource_metadata="…"`; user lacking `rag_mcp_user` → 403.
 - Ingest a doc via `/api/documents/ingest` (Admin), then MCP `tools/list` + `tools/call search_rag_documents` over the SSE session → chunk returned. **Not yet run** (needs the stack up).
 
+### 11. Streamable HTTP, stateless (added after §10)
+
+**Issue:** *"Add Streamable HTTP to make MCP tool stateless, so pure request/response model."*
+
+§3 shipped HTTP+SSE: the client opens `GET /mcp/sse`, receives an `endpoint` event, POSTs to `/mcp/message`, and reads the reply back off the stream. Server keeps per-session state; a dropped stream loses the session. That contradicts the rest of the app — `SessionCreationPolicy.STATELESS`, a bearer token per request — and makes the server hostile to plain HTTP clients and load balancers. Streamable HTTP (MCP spec 2025-03-26) collapses it to one endpoint; its **stateless** flavour drops sessions entirely: one POST, one JSON response.
+
+**Forced upgrade.** MCP SDK 0.10.0 (Spring AI 1.0.0) has no streamable transport at all — `WebMvcStatelessServerTransport` / `McpServerStatelessWebMvcAutoConfiguration` first appear in Spring AI 1.1.x (SDK 0.18.3), which is built against Boot 3.5.15. So:
+- `build.gradle`: Boot `3.3.0` → `3.5.15`, dependency-management `1.1.5` → `1.1.7`, `springAiVersion` `1.0.0` → `1.1.8`; pinned reranker deps re-aligned to what `spring-ai-transformers:1.1.8` pulls (`tokenizers` `0.30.0` → `0.32.0`, `onnxruntime` `1.19.2` → `1.20.0`). Starter artifact name unchanged.
+- `application.yml`: `protocol: STATELESS` + `streamable-http.mcp-endpoint: /mcp`; `sse-endpoint`/`sse-message-endpoint` deleted (dead once protocol ≠ SSE). Answers §Unresolved-1 by removing the question.
+- `SecurityConfig.mcpFilterChain`: `securityMatcher("/mcp/**")` → `securityMatcher("/mcp", "/mcp/**")`. `/mcp/**` does match the bare `/mcp` under both Ant and PathPattern semantics; the endpoint is now *exactly* that path and this chain is the only thing between an agent and the tool, so it is spelled out rather than inferred.
+- `McpServerConfig`: no code change. `StatelessToolCallbackConverterAutoConfiguration` consumes the same `ToolCallbackProvider` bean and converts via `McpToolUtils.toStatelessSyncToolSpecification` — the transport swap does not reach the tool.
+- `mcp.resource` unchanged (`http://localhost:8080/mcp`): the RFC 9728 resource id and the endpoint are now literally the same URI. `docker-compose.yml` untouched.
+
+**What stateless gives up** (deliberate, not overlooked): no session id, no `GET /mcp` SSE stream, no server→client traffic — sampling, roots, elicitation, progress notifications, `notifications/tools/list_changed`. This server publishes one read-only tool from a fixed list and uses none of them; `spring.ai.mcp.server.*-change-notification` become no-ops. Clients must not send `Mcp-Session-Id`.
+
+**Error contract from §10 survives unchanged**, on the stateless path: `MethodToolCallback` → `ToolExecutionException` → `McpToolUtils.toStatelessSyncToolSpecification`'s handler → `CallToolResult(isError=true)`. `RagMcpToolErrorReportingTest` was retargeted to it (`spec.callHandler().apply(McpTransportContext.EMPTY, new CallToolRequest(name, args))` replaces the 0.10.0 `spec.call().apply(exchange, argsMap)`), so the wording constants in `DefaultRagFacade` remain covered.
+
+**Tests:** `McpSecurityTest` now drives `POST /mcp` (same 401/challenge/403/allowed assertions) plus two new cases — every method on the bare `/mcp` path is guarded, and the retired `/mcp/sse`, `/mcp/message` sub-paths stay guarded. `@MockBean` → `@MockitoBean` in `McpSecurityTest` + `SecurityConfigTest` (deprecated since Boot 3.4, removed in Boot 4; the upgrade is what surfaced it).
+
+**Verification — not run.** Still no JDK and no Docker on this machine (user opted against installing one), so §11 ships uncompiled like §10. What *was* verified, against the published artifacts rather than memory: `protocol` + `streamable-http.mcp-endpoint` and the `STATELESS` enum constant exist in `spring-ai-autoconfigure-mcp-server-common:1.1.8`'s configuration metadata; `McpServerStatelessWebMvcAutoConfiguration` binds the endpoint via `McpServerStreamableHttpProperties.getMcpEndpoint()`; `McpToolUtils.toStatelessSyncToolSpecification(ToolCallback, MimeType)`, `McpStatelessServerFeatures$SyncToolSpecification.callHandler()`, `McpTransportContext.EMPTY` and `McpSchema$CallToolRequest(String, Map)` all exist in `spring-ai-mcp:1.1.8` / `mcp-core:0.18.3`; the app-side Spring AI API surface (`VectorStore`, `SearchRequest.builder()`, `TransformersEmbeddingModel`, `TikaDocumentReader`, `MethodToolCallbackProvider`) is unchanged between 1.0.0 and 1.1.8.
+
+To run: `./gradlew clean check` (likeliest fallout: Boot 3.5 test-slice or Mockito changes). Then, against the stack, replacing the §Verification SSE steps:
+```
+curl -si -X POST http://localhost:8080/mcp -H "Authorization: Bearer $T" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+```
+→ 200 + JSON body and **no `Mcp-Session-Id` header**; then `tools/list` and `tools/call search_rag_documents` as independent POSTs with no prior handshake state. Negatives unchanged (no token → 401 + `resource_metadata` hint; `rag-api-client` token → 401; missing `rag_mcp_user` → 403), and `GET /mcp/sse` must now 401 rather than open a stream.
+
+Not addressed here: `topK` is still unclamped upward on the MCP tool, and a `/code-review` of PR #5 flags that `keycloak/realm-local-rag.json`'s top-level `clientScopes` array lists only the two custom scopes — on a fresh import the built-in `roles` scope may not be created, leaving tokens without `realm_access.roles` (every request 403). Both are separate issues.
+
 ## Unresolved questions
-1. `sse-endpoint` under `/mcp/sse` (single `/mcp/**` security rule) vs Spring AI default `/sse` — OK to deviate from default?
+1. ~~`sse-endpoint` under `/mcp/sse` (single `/mcp/**` security rule) vs Spring AI default `/sse` — OK to deviate from default?~~ Moot: SSE removed in §11; endpoint is `/mcp` (also the Spring AI default).
 2. MCP server `version` hardcoded `1.0.0` vs app version `1.0-SNAPSHOT` — care?
 3. Keycloak: give `rag_mcp_user` to both `Admin` and `User`, or `Admin` only?
 4. If the platform grows to several APIs behind one Keycloak: move to per-API audience via client scopes and validate `aud` on the REST chain too?
+5. (§11) `STATELESS` vs `STREAMABLE` — taken as stateless from the issue wording; `STREAMABLE` would keep sessions + an SSE upgrade path. Confirm nothing later needs server→client notifications.
+6. (§11) RFC 9728 metadata + `resource_metadata` 401 hint kept as written for SSE — still correct for the single `/mcp` endpoint, but worth a re-read against the current MCP auth spec.
+7. (§11) Boot 3.3 → 3.5 touches the whole app, not just MCP, and is in the same commit — split later if the history matters.
+8. (§11) Nothing here is compiled or run; `./gradlew clean check` is outstanding.
