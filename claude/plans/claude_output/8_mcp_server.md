@@ -76,7 +76,7 @@ spring.ai.mcp.server:
 `keycloak/realm-local-rag.json`:
 - realm role `rag_mcp_user`; added to `realmRoles` of both users `Admin` and `User`.
 - two **optional** client scopes, each holding an `oidc-audience-mapper` (`access.token.claim=true`, `id.token.claim=false`): `rag-api` → `rag-platform`, `rag-mcp-api` → `rag-mcp`. Audience is opt-in; a token with neither scope opens nothing.
-- Each client lists `defaultClientScopes` explicitly (`acr basic email profile roles web-origins`) — Keycloak replaces, not merges, a client's scope set once `optionalClientScopes` is given, and dropping `roles` would kill the `realm_access` claim every role check depends on.
+- Each client lists `defaultClientScopes` explicitly (`acr basic email profile roles web-origins`) — Keycloak replaces, not merges, a client's scope set once `optionalClientScopes` is given, and dropping `roles` would kill the `realm_access` claim every role check depends on. **Wrong, fixed in §12:** listing those names was not enough, because declaring `clientScopes` at all stops Keycloak creating the built-ins, so `roles` did not exist to be referenced.
 - Superseded by §9: originally a single client `rag-client` held both scopes, so a caller could request both and get a token valid on both surfaces.
 
 ### 6. Tests
@@ -150,7 +150,7 @@ Still open: rename `pl.km.shared.rag` → `pl.km.ragapi` (it is a published API 
 - `docker compose down -v && docker compose up --build` — **realm re-import required**, old tokens carry the old client/aud. Token: `curl -d client_id=rag-mcp-client -d username=Admin -d password=<secret> -d grant_type=password -d scope="openid rag-mcp-api" http://localhost:8081/realms/local-rag/protocol/openid-connect/token`.
 - Check claim: `… | jq -r .access_token | cut -d. -f2 | base64 -d | jq '.aud, .azp, .realm_access.roles'` → aud has `rag-mcp` (or `rag-platform` for `-d client_id=rag-api-client -d client_secret=$(cat secrets/rag_api_client_secret.txt) -d scope="openid rag-api"`), roles non-empty.
 - **Confidential-client check**: same REST token request *without* `client_secret` → `401 invalid_client`. This is the step that makes the split a boundary rather than a convention.
-- **First-boot check** (realm import with an explicit `clientScopes` array historically suppressed the built-in scopes, keycloak/keycloak#10021): if `realm_access.roles` is missing or Admin Console shows no `roles` scope on either client, the built-ins were not created → add them to the import or assign via kcadm.
+- **First-boot check** (realm import with an explicit `clientScopes` array suppresses the built-in scopes, keycloak/keycloak#10021 — confirmed against the 26.0 source in §12, and it did bite): if `realm_access.roles` is missing or Admin Console shows no `roles` scope on either client, the import lost it → §12 declares `roles` in the realm so it cannot.
 - Cross-check the two tiers: `rag-api-client` + `scope=openid rag-api` → `/api/documents/query` 200, `/mcp/sse` 401; `rag-mcp-client` + `scope=openid rag-mcp-api` → the reverse; no scope → both 401.
 - **Split check**: `rag-mcp-client` + `scope="openid rag-api"` → token issued but `aud` has **no** `rag-platform` (unassigned optional scope is silently dropped) → `/api/documents/query` 401. Same in reverse for `rag-api-client` + `rag-mcp-api`.
 - `curl -s http://localhost:8080/.well-known/oauth-protected-resource | jq` → metadata, no token needed.
@@ -186,7 +186,24 @@ curl -si -X POST http://localhost:8080/mcp -H "Authorization: Bearer $T" \
 ```
 → 200 + JSON body and **no `Mcp-Session-Id` header**; then `tools/list` and `tools/call search_rag_documents` as independent POSTs with no prior handshake state. Negatives unchanged (no token → 401 + `resource_metadata` hint; `rag-api-client` token → 401; missing `rag_mcp_user` → 403), and `GET /mcp/sse` must now 401 rather than open a stream.
 
-Not addressed here: `topK` is still unclamped upward on the MCP tool, and a `/code-review` of PR #5 flags that `keycloak/realm-local-rag.json`'s top-level `clientScopes` array lists only the two custom scopes — on a fresh import the built-in `roles` scope may not be created, leaving tokens without `realm_access.roles` (every request 403). Both are separate issues.
+Not addressed here: `topK` is still unclamped upward on the MCP tool (an agent may ask for `topK: 100000` ⇒ that many pgvector rows and cross-encoder inferences on one request thread).
+
+### 12. Realm import: built-in `roles` client scope (added after §11)
+
+**Issue** (found by a `/code-review` of PR #5): §5 assumed Keycloak merges its built-in client scopes into an imported realm and that listing `defaultClientScopes` explicitly was enough to keep `roles`. It does not merge. Confirmed in the Keycloak 26.0 source, not from memory:
+- `RealmManager.importRealm` (26.0.0, line 580): `if (rep.getClientScopes() == null) createDefaultClientScopes(realm);` — declaring *any* `clientScopes` (as §5 did, for `rag-api` / `rag-mcp-api`) suppresses **all** built-ins.
+- `RepresentationToModel.addClientScopeToClient` (line 406): a client referencing a scope that does not exist is skipped with `Referenced client scope 'roles' doesn't exist. Ignoring` — a WARN, not a failure.
+
+So on a fresh `docker compose down -v && up` the clients ended up with no `roles` scope, hence no realm-roles mapper, hence no `realm_access.roles` claim. `SecurityConfig.extractRealmRoles` then grants zero authorities and **every** authenticated request is 403 — REST and MCP alike. Signature, `iss` and `aud` all still pass, so the failure looks like an authorisation bug rather than a realm-import one. This is exactly the "First-boot check" in §Verification; it had never been run.
+
+**Fix:** declare the `roles` scope in the realm alongside the two custom ones, with the three mappers Keycloak's own `OIDCLoginProtocolFactory.addRolesClientScope` attaches (`oidc-usermodel-realm-role-mapper` → `realm_access.roles`, `oidc-usermodel-client-role-mapper` → `resource_access.${client_id}.roles`, `oidc-audience-resolve-mapper`), and trim both clients to `defaultClientScopes: ["roles"]` + their one optional `rag-*` scope. Every scope referenced is now declared in the same file, so the realm no longer depends on what Keycloak seeds.
+
+Dropped from the client lists with that trim: `acr`, `basic`, `email`, `profile`, `web-origins`, `address`, `phone`, `offline_access`, `microprofile-jwt`. Nothing here reads their claims — the app validates `iss`, `aud` and `realm_access.roles`, CORS is configured in `SecurityConfig`, and there is no browser frontend or userinfo consumer. `sub` is a core access-token claim, not one of theirs. The alternative — transcribing all ten built-in scopes and their mappers into the import — was rejected: it is ~250 lines reconstructed from Keycloak internals that no test here covers, and it would drift on every Keycloak upgrade.
+
+Not fixed by this and worth knowing: an *undeclared* scope reference fails silently. If a client later needs `email` or `profile`, declare it in `clientScopes` first — adding it to a client list alone leaves a WARN in the Keycloak log and no scope.
+
+**Verification** (unchanged from §Verification, but now it is the point): after `docker compose down -v && docker compose up --build`, a token's `realm_access.roles` must be non-empty —
+`… | jq -r .access_token | cut -d. -f2 | base64 -d | jq '.aud, .azp, .realm_access.roles'`. Empty roles ⇒ the import lost the scope again. Not run here (no Docker on this machine).
 
 ## Unresolved questions
 1. ~~`sse-endpoint` under `/mcp/sse` (single `/mcp/**` security rule) vs Spring AI default `/sse` — OK to deviate from default?~~ Moot: SSE removed in §11; endpoint is `/mcp` (also the Spring AI default).
