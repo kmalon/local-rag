@@ -146,10 +146,19 @@ public class SecurityConfig {
      * Rejects tokens whose {@code aud} claim does not list this resource server.
      * A missing claim fails too: Keycloak only emits {@code aud} when an audience
      * mapper is configured, so its absence means the token was never scoped to us.
+     *
+     * <p>Typed as {@code Object} and matched on the runtime shape because {@code aud} is
+     * a JSON value that may arrive as either a string or an array. {@link NimbusJwtDecoder}
+     * normalises it to a collection before validators run, so in production only the
+     * collection branch is reached; accepting the bare string keeps the validator correct
+     * for any {@link Jwt} that skips that normalisation (a hand-built one, say).
      */
     static OAuth2TokenValidator<Jwt> audienceValidator(String audience) {
-        return new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
-                aud -> aud != null && aud.contains(audience));
+        return new JwtClaimValidator<Object>(JwtClaimNames.AUD, aud -> switch (aud) {
+            case Collection<?> audiences -> audiences.contains(audience);
+            case String single -> single.equals(audience);
+            case null, default -> false;
+        });
     }
 
     @Bean

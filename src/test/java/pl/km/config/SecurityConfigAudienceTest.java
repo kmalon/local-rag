@@ -46,6 +46,15 @@ class SecurityConfigAudienceTest {
     }
 
     @Test
+    void acceptsAudienceThatArrivedAsABareStringRatherThanAnArray() {
+        Jwt jwt = Jwt.withTokenValue("token").header("alg", "RS256").subject("user")
+                .claim("aud", AUDIENCE)
+                .build();
+
+        assertThat(validator.validate(jwt).hasErrors()).isFalse();
+    }
+
+    @Test
     void rejectsTokenWithoutAudienceClaim() {
         OAuth2TokenValidatorResult result = validator.validate(jwtWithAudience(null));
 

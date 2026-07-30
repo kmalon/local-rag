@@ -42,4 +42,10 @@ class ProtectedResourceMetadataControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.resource").value("http://localhost:8080/mcp"));
     }
+
+    @Test
+    void metadataIsNotServedForAResourcePathItDoesNotDescribe() throws Exception {
+        mockMvc.perform(get("/.well-known/oauth-protected-resource/something-else"))
+                .andExpect(status().isNotFound());
+    }
 }
