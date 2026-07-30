@@ -42,7 +42,7 @@ class RagMcpToolErrorReportingTest {
     private final QueryDocumentPort queryDocumentPort = mock(QueryDocumentPort.class);
 
     private McpStatelessServerFeatures.SyncToolSpecification searchTool() {
-        RagMcpTools tools = new RagMcpTools(new DefaultRagFacade(queryDocumentPort));
+        RagMcpTools tools = new RagMcpTools(new DefaultRagFacade(queryDocumentPort), 20);
         ToolCallback[] callbacks = MethodToolCallbackProvider.builder().toolObjects(tools).build().getToolCallbacks();
         assertThat(callbacks).hasSize(1);
         return McpToolUtils.toStatelessSyncToolSpecification(callbacks[0], JSON);

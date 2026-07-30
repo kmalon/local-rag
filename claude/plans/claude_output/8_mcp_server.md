@@ -186,7 +186,7 @@ curl -si -X POST http://localhost:8080/mcp -H "Authorization: Bearer $T" \
 ```
 → 200 + JSON body and **no `Mcp-Session-Id` header**; then `tools/list` and `tools/call search_rag_documents` as independent POSTs with no prior handshake state. Negatives unchanged (no token → 401 + `resource_metadata` hint; `rag-api-client` token → 401; missing `rag_mcp_user` → 403), and `GET /mcp/sse` must now 401 rather than open a stream.
 
-Not addressed here: `topK` is still unclamped upward on the MCP tool (an agent may ask for `topK: 100000` ⇒ that many pgvector rows and cross-encoder inferences on one request thread).
+(`topK` was still unclamped upward at this point; §13 bounds it.)
 
 ### 12. Realm import: built-in `roles` client scope (added after §11)
 
@@ -204,6 +204,23 @@ Not fixed by this and worth knowing: an *undeclared* scope reference fails silen
 
 **Verification** (unchanged from §Verification, but now it is the point): after `docker compose down -v && docker compose up --build`, a token's `realm_access.roles` must be non-empty —
 `… | jq -r .access_token | cut -d. -f2 | base64 -d | jq '.aud, .azp, .realm_access.roles'`. Empty roles ⇒ the import lost the scope again. Not run here (no Docker on this machine).
+
+### 13. Bounding the MCP tool's `topK` (added after §12)
+
+**Issue:** `RagMcpTools` normalised only the lower bound (`topK == null || topK <= 0` ⇒ 5). Upward it passed anything through, and `QueryDocumentService` then over-fetches `max(candidatePoolSize, topK)` rows from pgvector and runs `OnnxCrossEncoderRerankerAdapter` once per candidate — sequential `session.run` calls on the request thread. `topK: 100000` therefore buys 100k inferences per call. The argument is chosen by an LLM, which makes an implausible value likelier here than on REST, and the tool is the surface newly exposed to callers outside the app.
+
+**Fix:** `mcp.search.max-top-k` (`MCP_MAX_TOP_K`, default 20), injected into `RagMcpTools` by `@Value` — the same style as `mcp.resource`, and it keeps `mcp` from reading `rag.query.*` across the module boundary (§10). One resolution point bounds both ends:
+```java
+int topK = (requested == null || requested <= 0) ? DEFAULT_TOP_K : requested;
+return Math.min(topK, maxTopK);
+```
+Clamping over rejecting: an over-large `topK` is an agent misjudging a knob, not an error worth a round trip, and it matches how the lower bound already behaves. The ceiling is stated in the `@ToolParam` description so the model can plan against it, and a clamp is logged at DEBUG. The constructor rejects `max-top-k < 1`, which would otherwise turn every search into an empty result.
+
+Default of 20 = `rag.query.candidate-pool-size`: at that value the MCP surface never inflates the candidate pool beyond its configured size, so the reranker cost per call is what the pool was tuned for. The two settings are related but live in different modules — if one moves, move the other.
+
+REST (`QueryRequest`) is deliberately untouched: same shape, but callers there are scripts and CI holding the confidential client's secret, not an LLM. Worth revisiting if that stops being true.
+
+Tests in `RagMcpToolsTest`: 100k ⇒ maximum; exactly the maximum unchanged; the default is itself bounded when the maximum is configured below it; `max-top-k = 0` rejected at construction.
 
 ## Unresolved questions
 1. ~~`sse-endpoint` under `/mcp/sse` (single `/mcp/**` security rule) vs Spring AI default `/sse` — OK to deviate from default?~~ Moot: SSE removed in §11; endpoint is `/mcp` (also the Spring AI default).

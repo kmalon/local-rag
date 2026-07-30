@@ -6,6 +6,6 @@ Auth: OAuth2 Resource Server (JWT) via Keycloak realm `local-rag`, roles `rag_ad
 
 Query: pgvector over-fetches candidate pool, local cross-encoder reranker (ms-marco-MiniLM ONNX via onnxruntime) re-scores; score threshold applied to reranker output.
 
-MCP: Spring AI MCP server (`spring-ai-starter-mcp-server-webmvc`), **stateless Streamable HTTP** (`spring.ai.mcp.server.protocol=STATELESS`) at single endpoint `/mcp` — one POST per JSON-RPC message, JSON response, no session id/SSE stream, so no server→client features (sampling, roots, list-changed notifications). Read-only tool `search_rag_documents(question, topK, minScore)` delegating to `RagFacade`.
+MCP: Spring AI MCP server (`spring-ai-starter-mcp-server-webmvc`), **stateless Streamable HTTP** (`spring.ai.mcp.server.protocol=STATELESS`) at single endpoint `/mcp` — one POST per JSON-RPC message, JSON response, no session id/SSE stream, so no server→client features (sampling, roots, list-changed notifications). Read-only tool `search_rag_documents(question, topK, minScore)` delegating to `RagFacade`; `topK` bounded both ways (default 5, max `mcp.search.max-top-k` = 20, matching the candidate pool) since an LLM picks it and each candidate costs a reranker inference.
 
 Infra: docker-compose (pgvector/pgvector:pg16 + Keycloak + app image). Tests split: unit in `src/test` (`test` task); integration (`@WebMvcTest`+) in `src/integration-test` (`integrationTest` task, wired into `check`).

@@ -38,6 +38,12 @@ mcp:
   # RFC 9728 resource identifier of the MCP server (a URI, unlike the `aud` value above).
   # Drives the metadata document and the well-known path in the 401 challenge.
   resource: ${MCP_RESOURCE:http://localhost:8080/mcp}
+  search:
+    # Ceiling on the tool's topK argument, which an LLM picks. Retrieval over-fetches at
+    # least topK candidates and reranks each one sequentially, so an unbounded value is a
+    # load amplifier. Kept in step with rag.query.candidate-pool-size below: at this value
+    # the MCP surface never inflates the candidate pool beyond its configured size.
+    max-top-k: ${MCP_MAX_TOP_K:20}
 
 rag:
   chunking:

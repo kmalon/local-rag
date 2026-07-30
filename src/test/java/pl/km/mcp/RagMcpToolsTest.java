@@ -7,14 +7,17 @@ import pl.km.shared.rag.RagFacade;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 class RagMcpToolsTest {
 
+    private static final int MAX_TOP_K = 20;
+
     private final RagFacade ragFacade = mock(RagFacade.class);
-    private final RagMcpTools tools = new RagMcpTools(ragFacade);
+    private final RagMcpTools tools = new RagMcpTools(ragFacade, MAX_TOP_K);
 
     @Test
     void passesArgumentsToFacadeAndReturnsResults() {
@@ -39,5 +42,36 @@ class RagMcpToolsTest {
         tools.searchDocuments("question", 0, null);
 
         verify(ragFacade).search("question", RagMcpTools.DEFAULT_TOP_K, null);
+    }
+
+    @Test
+    void reducesTopKToTheConfiguredMaximum() {
+        tools.searchDocuments("question", 100_000, null);
+
+        verify(ragFacade).search("question", MAX_TOP_K, null);
+    }
+
+    @Test
+    void leavesTopKAtTheMaximumUntouched() {
+        tools.searchDocuments("question", MAX_TOP_K, null);
+
+        verify(ragFacade).search("question", MAX_TOP_K, null);
+    }
+
+    /**
+     * The default must not slip past a maximum configured below it.
+     */
+    @Test
+    void defaultTopKIsAlsoBoundedByTheMaximum() {
+        new RagMcpTools(ragFacade, 2).searchDocuments("question", null, null);
+
+        verify(ragFacade).search("question", 2, null);
+    }
+
+    @Test
+    void rejectsAMaximumThatWouldReturnNothing() {
+        assertThatThrownBy(() -> new RagMcpTools(ragFacade, 0))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("max-top-k");
     }
 }
