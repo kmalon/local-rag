@@ -24,6 +24,7 @@ Then adjust the values as needed and run `docker compose up`.
 | `keycloak_admin_password.txt`   | keycloak | Keycloak bootstrap admin password        |
 | `rag_admin_password.txt`        | keycloak | Password for realm user `Admin`          |
 | `rag_user_password.txt`         | keycloak | Password for realm user `User`           |
+| `rag_api_client_secret.txt`     | keycloak | Client secret for `rag-api-client`       |
 
 ## How the mapping works
 
@@ -32,4 +33,15 @@ Then adjust the values as needed and run `docker compose up`.
   `/run/secrets/spring.datasource.username` and `.../spring.datasource.password`
   and imported via Spring's `configtree:` config import.
 - **keycloak**: admin bootstrap secrets are exported as env vars; the realm
-  user passwords are substituted into the realm import at container start.
+  user passwords and the `rag-api-client` secret are substituted into the realm
+  import at container start.
+
+## `rag_api_client_secret.txt`
+
+`rag-api-client` is a confidential client: REST callers must present this secret
+at the token endpoint, which is what stops a process that merely knows the
+`client_id` from minting a `rag-platform` token. Give it to REST callers
+(scripts, CI) only — never to an AI agent or anything driving the MCP server,
+since handing it over collapses the whole client split. `rag-mcp-client` is
+public by necessity and has no secret; its isolation comes from the scope split
+alone.

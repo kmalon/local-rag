@@ -18,7 +18,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "keycloak.issuer-uri=http://localhost:8081/realms/local-rag",
         "keycloak.jwk-set-uri=http://localhost:8081/realms/local-rag/protocol/openid-connect/certs",
         "keycloak.audience.api=rag-platform",
-        "keycloak.audience.mcp=rag_mcp",
+        "keycloak.audience.mcp=rag-mcp",
         "mcp.resource=http://localhost:8080/mcp"
 })
 class ProtectedResourceMetadataControllerTest {

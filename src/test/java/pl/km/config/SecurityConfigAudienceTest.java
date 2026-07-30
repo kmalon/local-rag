@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class SecurityConfigAudienceTest {
 
-    private static final String AUDIENCE = "rag_mcp";
+    private static final String AUDIENCE = "rag-mcp";
 
     private final OAuth2TokenValidator<Jwt> validator = SecurityConfig.audienceValidator(AUDIENCE);
 

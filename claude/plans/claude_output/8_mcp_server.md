@@ -74,9 +74,9 @@ spring.ai.mcp.server:
 ### 5. Keycloak
 `keycloak/realm-local-rag.json`:
 - realm role `rag_mcp_user`; added to `realmRoles` of both users `Admin` and `User`.
-- two **optional** client scopes, each holding an `oidc-audience-mapper` (`access.token.claim=true`, `id.token.claim=false`): `rag-api` → `rag-platform`, `mcp-api` → `rag_mcp`. Audience is opt-in; a token with neither scope opens nothing.
-- Not enforced: a caller may request both scopes and get a token valid on both surfaces. Hard isolation needs separate clients.
-- `rag-client` lists `defaultClientScopes` explicitly (`acr basic email profile roles web-origins`) — Keycloak replaces, not merges, a client's scope set once `optionalClientScopes` is given, and dropping `roles` would kill the `realm_access` claim every role check depends on.
+- two **optional** client scopes, each holding an `oidc-audience-mapper` (`access.token.claim=true`, `id.token.claim=false`): `rag-api` → `rag-platform`, `rag-mcp-api` → `rag-mcp`. Audience is opt-in; a token with neither scope opens nothing.
+- Each client lists `defaultClientScopes` explicitly (`acr basic email profile roles web-origins`) — Keycloak replaces, not merges, a client's scope set once `optionalClientScopes` is given, and dropping `roles` would kill the `realm_access` claim every role check depends on.
+- Superseded by §9: originally a single client `rag-client` held both scopes, so a caller could request both and get a token valid on both surfaces.
 
 ### 6. Tests
 - Unit `src/test/java/pl/km/mcp/RagMcpToolsTest`: mocked `RagFacade` — default topK=5 when null/≤0, args passed through.
@@ -94,7 +94,7 @@ Original plan had signature+`iss` only → any realm token opened MCP (confused 
 - `SecurityConfig.audienceValidator(aud)` — `JwtClaimValidator` on `aud`; missing claim fails.
 - **Both** chains validate audience, with different values (two-tier):
   - REST → `keycloak.audience.api` = `rag-platform` (`API_AUDIENCE`) — broad, shared across platform APIs.
-  - `/mcp/**` → `keycloak.audience.mcp` = `rag_mcp` (`MCP_AUDIENCE`) — MCP-only, so an agent's token can't be replayed at other APIs.
+  - `/mcp/**` → `keycloak.audience.mcp` = `rag-mcp` (`MCP_AUDIENCE`) — MCP-only, so an agent's token can't be replayed at other APIs.
 - `mcp.resource` (`MCP_RESOURCE`, `http://localhost:8080/mcp`) is now **only** the RFC 9728 resource id / well-known path, no longer the `aud` value.
 - Operational consequence: every client calling REST needs the `rag-platform` audience configured, else 401.
 - `pl.km.mcp.ProtectedResourceMetadata(Controller)` — public RFC 9728 doc at `/.well-known/oauth-protected-resource` + `/…/mcp` (§3.1 path-scoped form); fields `resource`, `authorization_servers` (= `keycloak.issuer-uri`), `bearer_methods_supported`.
@@ -102,12 +102,27 @@ Original plan had signature+`iss` only → any realm token opened MCP (confused 
 
 Not done: Keycloak 26 ignores RFC 8707 `resource` param (aud comes from mapper regardless); MCP SDK 0.10.0 = HTTP+SSE, predates the auth-spec revision.
 
+### 9. Client split (added after §8)
+`aud` alone was a convention, not a boundary: optional scopes are chosen by the caller, so one `rag-client` token could carry both audiences. Split so the audiences are mutually unreachable — a client cannot request an optional scope it isn't assigned:
+- `rag-api-client` — optional scopes `… rag-api`; REST callers. **Confidential** (`publicClient=false`, `clientAuthenticatorType=client-secret`).
+- `rag-mcp-client` — optional scopes `… rag-mcp-api`; AI agents → MCP. Public by necessity: an agent cannot keep a secret.
+- Renamed with the split: scope `mcp-api` → `rag-mcp-api`, audience `rag_mcp` → `rag-mcp` (consistent `rag-` prefix, no underscore).
+- Roles unchanged and still orthogonal; both users keep `rag_user` + `rag_mcp_user`, so the client/audience split — not the role — is what isolates the surfaces.
+
+Why confidential on REST: `client_id` is an identifier, not a credential (RFC 6749 §2.1), so with both clients public any local process could run its own flow against `rag-api-client` and the scope split would only be a naming convention. The secret closes that. Viable here because there is no browser frontend — `DocumentController` is driven by scripts/CI, which can hold one. Together the two facts are exhaustive: `rag-platform` requires the `rag-api` scope, which only `rag-api-client` holds, which requires the secret.
+
+Secret plumbing mirrors the existing user passwords: `secrets/rag_api_client_secret.txt` (gitignored by `secrets/*.txt`) → compose secret `rag_api_client_secret` → bash parameter expansion replaces `__RAG_API_CLIENT_SECRET__` in the realm template at container start. Never hand it to an agent; that collapses the split.
+
+Still open (deliberately not done here): PKCE `S256` on `rag-mcp-client`, `directAccessGrantsEnabled=false` outside testing, optional `azp` validator on the MCP chain. Residual risk: the agent runs as the same OS user as the REST caller, so it could read the secret off disk — that is a host/sandboxing problem, outside OAuth's threat model, and the split stops *emergent* agent access, not local credential theft.
+
 ## Verification
 - `./gradlew clean check` — **done, 25 tests green** (13 unit / 12 integration). Note: container `pids.max=256`; kill stale Gradle JVMs first or test workers die with `pthread_create EAGAIN`.
-- `docker compose down -v && docker compose up --build` — **realm re-import required**, old tokens lack `aud`. Token: `curl -d client_id=rag-client -d username=Admin -d password=<secret> -d grant_type=password -d scope="openid mcp-api" http://localhost:8081/realms/local-rag/protocol/openid-connect/token`.
-- Check claim: `… | jq -r .access_token | cut -d. -f2 | base64 -d | jq '.aud, .realm_access.roles'` → aud has `rag_mcp` (or `rag-platform` for `scope=openid rag-api`), roles non-empty.
-- **First-boot check** (realm import with an explicit `clientScopes` array historically suppressed the built-in scopes, keycloak/keycloak#10021): if `realm_access.roles` is missing or Admin Console shows no `roles` scope on rag-client, the built-ins were not created → add them to the import or assign via kcadm.
-- Cross-check the two tiers: `scope=openid rag-api` → `/api/documents/query` 200, `/mcp/sse` 401; `scope=openid mcp-api` → the reverse; no scope → both 401.
+- `docker compose down -v && docker compose up --build` — **realm re-import required**, old tokens carry the old client/aud. Token: `curl -d client_id=rag-mcp-client -d username=Admin -d password=<secret> -d grant_type=password -d scope="openid rag-mcp-api" http://localhost:8081/realms/local-rag/protocol/openid-connect/token`.
+- Check claim: `… | jq -r .access_token | cut -d. -f2 | base64 -d | jq '.aud, .azp, .realm_access.roles'` → aud has `rag-mcp` (or `rag-platform` for `-d client_id=rag-api-client -d client_secret=$(cat secrets/rag_api_client_secret.txt) -d scope="openid rag-api"`), roles non-empty.
+- **Confidential-client check**: same REST token request *without* `client_secret` → `401 invalid_client`. This is the step that makes the split a boundary rather than a convention.
+- **First-boot check** (realm import with an explicit `clientScopes` array historically suppressed the built-in scopes, keycloak/keycloak#10021): if `realm_access.roles` is missing or Admin Console shows no `roles` scope on either client, the built-ins were not created → add them to the import or assign via kcadm.
+- Cross-check the two tiers: `rag-api-client` + `scope=openid rag-api` → `/api/documents/query` 200, `/mcp/sse` 401; `rag-mcp-client` + `scope=openid rag-mcp-api` → the reverse; no scope → both 401.
+- **Split check**: `rag-mcp-client` + `scope="openid rag-api"` → token issued but `aud` has **no** `rag-platform` (unassigned optional scope is silently dropped) → `/api/documents/query` 401. Same in reverse for `rag-api-client` + `rag-mcp-api`.
 - `curl -s http://localhost:8080/.well-known/oauth-protected-resource | jq` → metadata, no token needed.
 - `curl -N -H "Authorization: Bearer $T" http://localhost:8080/mcp/sse` → SSE `endpoint` event; no token → 401 + `WWW-Authenticate: … resource_metadata="…"`; user lacking `rag_mcp_user` → 403.
 - Ingest a doc via `/api/documents/ingest` (Admin), then MCP `tools/list` + `tools/call search_rag_documents` over the SSE session → chunk returned. **Not yet run** (needs the stack up).

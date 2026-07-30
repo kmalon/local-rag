@@ -26,6 +26,7 @@ services:
         template="$$(cat /opt/keycloak/data/import-template/realm-local-rag.json)"
         template="$${template//__RAG_ADMIN_PASSWORD__/$$(cat /run/secrets/rag_admin_password)}"
         template="$${template//__RAG_USER_PASSWORD__/$$(cat /run/secrets/rag_user_password)}"
+        template="$${template//__RAG_API_CLIENT_SECRET__/$$(cat /run/secrets/rag_api_client_secret)}"
         printf '%s' "$$template" > /opt/keycloak/data/import/realm-local-rag.json
         export KC_BOOTSTRAP_ADMIN_USERNAME="$$(cat /run/secrets/keycloak_admin_user)"
         export KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /run/secrets/keycloak_admin_password)"
@@ -43,6 +44,7 @@ services:
       - keycloak_admin_password
       - rag_admin_password
       - rag_user_password
+      - rag_api_client_secret
     healthcheck:
       # Invoke bash explicitly: the /dev/tcp redirection is a bash extension and
       # the base image's /bin/sh (used by CMD-SHELL) is not guaranteed to be bash.
@@ -66,7 +68,7 @@ services:
       KEYCLOAK_ISSUER_URI: http://localhost:8081/realms/local-rag
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/local-rag/protocol/openid-connect/certs
       API_AUDIENCE: rag-platform
-      MCP_AUDIENCE: rag_mcp
+      MCP_AUDIENCE: rag-mcp
       MCP_RESOURCE: http://localhost:8080/mcp
     volumes:
       - ./src/main/resources/models/reranker:/app/models/reranker:ro
@@ -97,3 +99,5 @@ secrets:
     file: ./secrets/rag_admin_password.txt
   rag_user_password:
     file: ./secrets/rag_user_password.txt
+  rag_api_client_secret:
+    file: ./secrets/rag_api_client_secret.txt

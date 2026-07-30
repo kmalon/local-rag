@@ -46,18 +46,23 @@ import java.util.Map;
  *
  * <p>Two chains, because the two surfaces demand different audiences:
  * <ul>
- *   <li>{@code /mcp/**} requires {@code keycloak.audience.mcp} — narrow and
- *       MCP-specific, so a token an agent holds cannot be replayed against the
- *       platform's other APIs. It also answers 401 with an RFC 9728
+ *   <li>{@code /mcp/**} requires {@code keycloak.audience.mcp} ({@code rag-mcp}) —
+ *       narrow and MCP-specific, so a token an agent holds cannot be replayed against
+ *       the platform's other APIs. It also answers 401 with an RFC 9728
  *       {@code resource_metadata} hint.</li>
- *   <li>everything else requires {@code keycloak.audience.api} — a broad identifier
- *       shared by the platform's ordinary APIs, so one token serves them all.</li>
+ *   <li>everything else requires {@code keycloak.audience.api} ({@code rag-platform}) —
+ *       a broad identifier shared by the platform's ordinary APIs, so one token serves
+ *       them all.</li>
  * </ul>
  *
- * <p>Either way a token is only accepted where it was addressed, which is what stops
- * a service that receives a token from turning around and using it elsewhere.
- * Authorisation on top of that still rests on the {@code rag_admin}/{@code rag_user}/
- * {@code rag_mcp_user} realm roles.
+ * <p>The realm makes those audiences mutually unreachable rather than merely distinct:
+ * each is injected by a client scope ({@code rag-api}, {@code rag-mcp-api}) assigned to
+ * exactly one client ({@code rag-api-client}, {@code rag-mcp-client}). Since an optional
+ * scope a client does not hold cannot be requested, an agent authenticating through
+ * {@code rag-mcp-client} has no way to obtain a {@code rag-platform} token whatever
+ * scopes it asks for — the check here enforces a boundary Keycloak already guarantees at
+ * issuance. Authorisation on top of that still rests on the {@code rag_admin}/
+ * {@code rag_user}/{@code rag_mcp_user} realm roles.
  */
 @Configuration
 @EnableWebSecurity

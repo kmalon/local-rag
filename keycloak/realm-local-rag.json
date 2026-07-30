@@ -11,7 +11,23 @@
   },
   "clients": [
     {
-      "clientId": "rag-client",
+      "clientId": "rag-api-client",
+      "description": "REST API callers. Confidential: token exchange requires the client secret, so a process that merely knows this client_id cannot mint a `rag-platform` token. Cannot reach the MCP server either — `rag-mcp-api` is absent from its scope list.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "__RAG_API_CLIENT_SECRET__",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["http://localhost:*", "http://127.0.0.1:*"],
+      "webOrigins": ["+"],
+      "protocol": "openid-connect",
+      "defaultClientScopes": ["acr", "basic", "email", "profile", "roles", "web-origins"],
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt", "rag-api"]
+    },
+    {
+      "clientId": "rag-mcp-client",
+      "description": "AI agents reaching the MCP server. Necessarily public — an agent cannot keep a secret — so isolation rests entirely on the scope split: `rag-api` is absent from its scope list, hence no token it obtains can carry the `rag-platform` audience.",
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
@@ -20,13 +36,13 @@
       "webOrigins": ["+"],
       "protocol": "openid-connect",
       "defaultClientScopes": ["acr", "basic", "email", "profile", "roles", "web-origins"],
-      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt", "rag-api", "mcp-api"]
+      "optionalClientScopes": ["address", "phone", "offline_access", "microprofile-jwt", "rag-mcp-api"]
     }
   ],
   "clientScopes": [
     {
       "name": "rag-api",
-      "description": "Access to the REST API; adds the shared platform audience, valid across platform APIs",
+      "description": "Access to the REST API; adds the shared platform audience, valid across platform APIs. Assigned to `rag-api-client` only.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -46,8 +62,8 @@
       ]
     },
     {
-      "name": "mcp-api",
-      "description": "Access to the MCP server; adds an MCP-only audience so the token is useless elsewhere",
+      "name": "rag-mcp-api",
+      "description": "Access to the MCP server; adds an MCP-only audience so the token is useless elsewhere. Assigned to `rag-mcp-client` only.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "true",
@@ -59,7 +75,7 @@
           "protocol": "openid-connect",
           "protocolMapper": "oidc-audience-mapper",
           "config": {
-            "included.custom.audience": "rag_mcp",
+            "included.custom.audience": "rag-mcp",
             "id.token.claim": "false",
             "access.token.claim": "true"
           }
