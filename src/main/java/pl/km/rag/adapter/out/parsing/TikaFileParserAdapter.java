@@ -3,7 +3,7 @@ package pl.km.rag.adapter.out.parsing;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Component;
-import pl.km.shared.exception.UnsupportedFileTypeException;
+import pl.km.rag.application.exception.UnsupportedFileTypeException;
 import pl.km.rag.application.port.out.FileParserPort;
 
 import java.io.InputStream;

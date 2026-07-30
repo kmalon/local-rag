@@ -11,22 +11,17 @@ import org.springframework.beans.factory.BeanInitializationException;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
-import pl.km.shared.exception.RerankerException;
+import pl.km.rag.application.model.QueryResult;
 import pl.km.rag.application.port.out.RerankerPort;
 import pl.km.rag.config.RerankerProperties;
-import pl.km.shared.QueryResult;
+import pl.km.rag.application.exception.RerankerException;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Local cross-encoder reranker (e.g. ms-marco-MiniLM-L-6-v2) run via ONNX Runtime.

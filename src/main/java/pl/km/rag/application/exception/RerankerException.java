@@ -1,9 +1,9 @@
-package pl.km.shared.exception;
+package pl.km.rag.application.exception;
 
 /**
  * Thrown when the cross-encoder reranker fails at query time (e.g. inference error).
- * Mapped to HTTP 503 so callers see a clear "reranker unavailable" signal rather than
- * a silently wrong result.
+ * RAG-internal: each inbound adapter decides how to report it (REST maps it to HTTP 503,
+ * the facade translates it into its contract exception) rather than a silently wrong result.
  */
 public class RerankerException extends RuntimeException {
 

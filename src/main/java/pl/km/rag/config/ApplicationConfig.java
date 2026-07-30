@@ -2,14 +2,11 @@ package pl.km.rag.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import pl.km.rag.adapter.in.DefaultRagFacade;
 import pl.km.rag.application.IngestDocumentService;
 import pl.km.rag.application.QueryDocumentService;
-import pl.km.rag.application.port.out.DocumentVectorRepository;
-import pl.km.rag.application.port.out.EmbeddingPort;
-import pl.km.rag.application.port.out.FileParserPort;
-import pl.km.rag.application.port.out.RerankerPort;
-import pl.km.rag.application.port.out.TextSplitterPort;
-import pl.km.rag.application.port.out.VectorSearchPort;
+import pl.km.rag.application.port.out.*;
+import pl.km.shared.rag.RagFacade;
 
 @Configuration
 public class ApplicationConfig {
@@ -28,4 +25,10 @@ public class ApplicationConfig {
                                                      QueryProperties queryProperties) {
         return new QueryDocumentService(vectorSearchPort, rerankerPort, queryProperties);
     }
+
+    @Bean
+    public RagFacade ragFacade(QueryDocumentService queryDocumentService) {
+        return new DefaultRagFacade(queryDocumentService);
+    }
+
 }

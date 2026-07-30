@@ -26,19 +26,20 @@ pl.km
     ├─ ProtectedResourceMetadata(Controller)  (RFC 9728 discovery)
     └─ config/McpServerConfig (ToolCallbackProvider bean)
 ```
+Layout above is as-planned. §10 revises `shared/`, deletes `web/`, and moves the facade.
 
 ## Steps
 
 ### 1. Move (pure refactor, no logic change)
-- `application/model/QueryResult.java` → `pl.km.shared.QueryResult`. Update refs: `QueryDocumentService`, `RerankerPort`, `VectorSearchPort`, `QueryDocumentPort`, `PgVectorSearchAdapter`, `OnnxCrossEncoderRerankerAdapter`, `DocumentController`.
-- `application/exception/*` → `pl.km.shared.exception`.
-- `adapter/in/rest/{GlobalExceptionHandler,ErrorResponse}` → `pl.km.web`.
+- `application/model/QueryResult.java` → `pl.km.shared.rag.RagQueryResult`. Update refs: `QueryDocumentService`, `RerankerPort`, `VectorSearchPort`, `QueryDocumentPort`, `PgVectorSearchAdapter`, `OnnxCrossEncoderRerankerAdapter`, `DocumentController`.
+- `application/exception/*` → `pl.km.shared.exception`. **Reverted in §10** (back into `rag`).
+- `adapter/in/rest/{GlobalExceptionHandler,ErrorResponse}` → `pl.km.web`. **Reverted in §10.**
 - Everything else under `adapter/`, `application/` → same paths under `pl.km.rag.`.
 - `config/{ApplicationConfig,EmbeddingConfig,ChunkingProperties,QueryProperties,RerankerProperties}` → `pl.km.rag.config`. `SecurityConfig` stays `pl.km.config`.
 - `LocalRagApplication`: fix `@EnableConfigurationProperties` imports (`pl.km.rag.config.*`). Component scan of `pl.km` still covers all.
 - Tests: `src/test/.../QueryDocumentServiceTest` → `pl.km.rag.application`; `src/integration-test/.../SecurityConfigTest` imports updated (`pl.km.rag.adapter.in.rest.DocumentController`, `pl.km.rag.application.port.in.*`).
 
-### 2. Facade (`pl.km.rag`)
+### 2. Facade (`pl.km.rag`) — repackaged + given real work in §10
 ```java
 public interface RagFacade { List<QueryResult> search(String question, int topK, Double minScore); }
 ```
@@ -115,8 +116,37 @@ Secret plumbing mirrors the existing user passwords: `secrets/rag_api_client_sec
 
 Still open (deliberately not done here): PKCE `S256` on `rag-mcp-client`, `directAccessGrantsEnabled=false` outside testing, optional `azp` validator on the MCP chain. Residual risk: the agent runs as the same OS user as the REST caller, so it could read the secret off disk — that is a host/sandboxing problem, outside OAuth's threat model, and the split stops *emergent* agent access, not local credential theft.
 
+### 10. Module boundary + failure contract (added after §9, uncommitted)
+Trigger: `RagFacade` had no obvious home — it is neither a hexagonal port nor an adapter, because hexagonal models module↔outside-world while this is module↔module. Model settled on: `rag` and `mcp` are **distinct modules**, one repo today, in-process call today, possibly REST between separate deployables later.
+
+Packaging:
+- Contract lives outside `rag`: `pl.km.shared.rag.{RagFacade, RagQueryResult, RagSearchUnavailableException}`. `mcp` imports only this — zero imports of `pl.km.rag`.
+- `pl.km.rag.adapter.in.DefaultRagFacade` (public, bean in `ApplicationConfig`) — correctly an **inbound adapter** now, because it implements a contract `rag` does not own and translates model→contract. Was wrong while the interface still lived inside `rag` (that was a port in an adapter package).
+- `QueryResult` split by lifecycle: `pl.km.rag.application.model.QueryResult` (internal, used by `QueryDocumentPort`/`VectorSearchPort`/`RerankerPort`) vs `pl.km.shared.rag.RagQueryResult` (published). Before the split one record was simultaneously rag's internal model *and* the MCP tool's wire schema — renaming a field in a vector-search adapter would have silently changed the published schema.
+- Exceptions moved back into the owner: `pl.km.rag.application.exception.{RerankerException, UnsupportedFileTypeException}`. `pl.km.shared.exception` deleted. Rationale: `UnsupportedFileTypeException` is ingest-only, so `mcp` (search-only) can never throw it; and `shared` was never needed to share a handler — a global `@RestControllerAdvice` could always import from `rag`, so `shared` only pre-paid for a boundary rule not yet adopted.
+- `GlobalExceptionHandler` → `pl.km.rag.adapter.in.rest.RagExceptionHandler`, scoped `@RestControllerAdvice(basePackageClasses = DocumentController.class)`; `ErrorResponse` moved with it; `pl.km.web` deleted. Error mapping is protocol-specific, so it belongs to the adapter owning the protocol. No behavioural change — both exceptions are rag-only.
+
+Failure contract (fail loudly, no degradation):
+- `RagSearchUnavailableException` is part of the published contract; a contract without declared failure modes is incomplete. Consumers catch it instead of any rag-internal exception, so an in-process and a future remote implementation report failure identically (REST split → the client adapter maps 503 onto it; `RagMcpTools` unchanged).
+- `DefaultRagFacade` catches `RerankerException` (retryable wording) **and** bare `RuntimeException` (generic wording), logs both at ERROR with the cause, rethrows. The catch-all is an information-leak guard, not tidiness — see the MCP semantics below. Cost: an NPE reports as "search failed unexpectedly"; the ERROR log keeps the real cause. Question is deliberately not logged.
+- REST is unaffected: `DocumentController` calls `QueryDocumentPort` directly, so it still sees raw `RerankerException` → 503. Each adapter sees what it needs.
+
+MCP error semantics — **handled out of the box**, nothing to configure:
+- `MethodToolCallback.call()` catches the reflective `InvocationTargetException` → `ToolExecutionException(toolDefinition, cause)`, whose `getMessage()` delegates to the cause's.
+- `McpToolUtils.lambda$toSyncToolSpecification$0` wraps the call in `catch (Exception e)` → `new CallToolResult(List.of(new TextContent(e.getMessage())), true)`. Result: HTTP 200, JSON-RPC *success*, `isError: true`, SSE session survives — failure scoped to the one tool call. Matches the MCP spec (execution errors go in the result, not as protocol errors).
+- **`getMessage()` is surfaced verbatim to the agent.** Hence the wording constants in `DefaultRagFacade`, and hence the catch-all: without it a pgvector failure would ship `"connection refused at 10.0.0.1:5432"` to an external agent. No stack trace crosses over.
+- `ToolExecutionExceptionProcessor` is **not** on this path — it is consulted by `DefaultToolCallingManager` (ChatClient side) only. A processor bean here would be dead code.
+- Nothing in Spring AI logs this path (`McpToolUtils` has no logger; the default processor logs at debug and is unused), so the facade's ERROR log is the only record of an MCP-side failure.
+
+Rejected: skipping the reranker when `minScore == 0` as a client-side way to dodge reranker failures. The score filter *is* a no-op at 0 (sigmoid ⇒ scores in (0,1)), but the reranker's main job is reordering — `poolSize = max(20, topK)` then `.limit(topK)` takes the top-K *of the reranked order*, so skipping it silently returns top-K by raw vector similarity. It would also overload a quality knob as a failure switch (`0` and `0.01` running different pipelines), and a client can only discover the need after a failure, then unknowingly accept degraded ranking. If wanted later: explicit `rerank: false` param or a `degraded` response flag.
+
+Still open: rename `pl.km.shared.rag` → `pl.km.ragapi` (it is a published API with its own compatibility rules, not a shared kernel; `shared` now holds nothing else); `minScore` unvalidated on both entry points (`QueryProperties` checks `[0,1]` for the configured default, `QueryRequest` clamps only `topK`, MCP passes through — `2.0` ⇒ empty list, `-1` ⇒ unfiltered); Spring Modulith / ArchUnit to enforce "no module imports another's `adapter..`".
+
 ## Verification
 - `./gradlew clean check` — **done, 25 tests green** (13 unit / 12 integration). Note: container `pids.max=256`; kill stale Gradle JVMs first or test workers die with `pthread_create EAGAIN`.
+- §10 is **unverified — never compiled**: no JDK on the machine where it was written (`JAVA_HOME` unset, no `javac`). Needs `./gradlew check`. New unit test `src/test/java/pl/km/rag/adapter/in/DefaultRagFacadeTest` (model→contract mapping, `RerankerException` translation, no internal detail in the message). Static check done: no references to `pl.km.shared.exception` or `pl.km.web` remain.
+- Unit `src/test/java/pl/km/mcp/RagMcpToolErrorReportingTest` — drives `search_rag_documents` through the real `MethodToolCallback` → `ToolExecutionException` → `McpToolUtils` → `CallToolResult` chain with only `QueryDocumentPort` stubbed: reranker failure ⇒ `isError=true` carrying the facade's wording; unexpected failure ⇒ no `pgvector`/host/exception-class text; success ⇒ `isError=false`. This is what verifies the one step inferred from bytecode (`ToolExecutionException.getMessage()` delegating to its cause). Lives in `src/test` because it starts no Spring context — that, not "does it touch third-party code", is the split this project uses between the two source sets (every existing file follows it: `src/test` = plain JUnit/Mockito, `src/integration-test` = `@WebMvcTest` slices).
+- Still not exercised end-to-end: `tools/call` over a real authenticated SSE session against the running stack (needs Keycloak + pgvector up).
 - `docker compose down -v && docker compose up --build` — **realm re-import required**, old tokens carry the old client/aud. Token: `curl -d client_id=rag-mcp-client -d username=Admin -d password=<secret> -d grant_type=password -d scope="openid rag-mcp-api" http://localhost:8081/realms/local-rag/protocol/openid-connect/token`.
 - Check claim: `… | jq -r .access_token | cut -d. -f2 | base64 -d | jq '.aud, .azp, .realm_access.roles'` → aud has `rag-mcp` (or `rag-platform` for `-d client_id=rag-api-client -d client_secret=$(cat secrets/rag_api_client_secret.txt) -d scope="openid rag-api"`), roles non-empty.
 - **Confidential-client check**: same REST token request *without* `client_secret` → `401 invalid_client`. This is the step that makes the split a boundary rather than a convention.

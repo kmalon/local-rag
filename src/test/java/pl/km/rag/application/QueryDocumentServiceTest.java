@@ -1,20 +1,16 @@
 package pl.km.rag.application;
 
 import org.junit.jupiter.api.Test;
+import pl.km.rag.application.model.QueryResult;
 import pl.km.rag.application.port.out.RerankerPort;
 import pl.km.rag.application.port.out.VectorSearchPort;
 import pl.km.rag.config.QueryProperties;
-import pl.km.shared.QueryResult;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 class QueryDocumentServiceTest {
 

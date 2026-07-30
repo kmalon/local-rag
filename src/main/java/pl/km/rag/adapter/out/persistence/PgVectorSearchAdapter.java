@@ -3,8 +3,8 @@ package pl.km.rag.adapter.out.persistence;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.stereotype.Component;
+import pl.km.rag.application.model.QueryResult;
 import pl.km.rag.application.port.out.VectorSearchPort;
-import pl.km.shared.QueryResult;
 
 import java.util.List;
 

@@ -1,6 +1,6 @@
 package pl.km.rag.application.port.out;
 
-import pl.km.shared.QueryResult;
+import pl.km.rag.application.model.QueryResult;
 
 import java.util.List;
 

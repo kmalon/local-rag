@@ -3,8 +3,8 @@ package pl.km.mcp;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-import pl.km.rag.RagFacade;
-import pl.km.shared.QueryResult;
+import pl.km.shared.rag.RagQueryResult;
+import pl.km.shared.rag.RagFacade;
 
 import java.util.List;
 
@@ -26,7 +26,7 @@ public class RagMcpTools {
     @Tool(name = "search_rag_documents",
             description = "Search the local RAG knowledge base and return the matching document chunks, "
                     + "ranked by relevance. Use it to ground answers in the user's own documents.")
-    public List<QueryResult> searchDocuments(
+    public List<RagQueryResult> searchDocuments(
             @ToolParam(description = "Natural-language question to search for") String question,
             @ToolParam(description = "Maximum number of chunks to return, default 5", required = false) Integer topK,
             @ToolParam(description = "Minimum relevance score in [0,1]; omit to use the server default",

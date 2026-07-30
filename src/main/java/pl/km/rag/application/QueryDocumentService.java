@@ -1,6 +1,6 @@
 package pl.km.rag.application;
 
-import pl.km.shared.QueryResult;
+import pl.km.rag.application.model.QueryResult;
 import pl.km.rag.application.port.in.QueryDocumentPort;
 import pl.km.rag.application.port.out.RerankerPort;
 import pl.km.rag.application.port.out.VectorSearchPort;

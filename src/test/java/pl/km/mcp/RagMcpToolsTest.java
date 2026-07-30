@@ -1,17 +1,15 @@
 package pl.km.mcp;
 
 import org.junit.jupiter.api.Test;
-import pl.km.rag.RagFacade;
-import pl.km.shared.QueryResult;
+import pl.km.shared.rag.RagQueryResult;
+import pl.km.shared.rag.RagFacade;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 class RagMcpToolsTest {
 
@@ -20,10 +18,10 @@ class RagMcpToolsTest {
 
     @Test
     void passesArgumentsToFacadeAndReturnsResults() {
-        List<QueryResult> expected = List.of(new QueryResult("doc.txt", "body", 0.9));
+        List<RagQueryResult> expected = List.of(new RagQueryResult("doc.txt", "body", 0.9));
         when(ragFacade.search(any(), anyInt(), any())).thenReturn(expected);
 
-        List<QueryResult> actual = tools.searchDocuments("question", 3, 0.5);
+        List<RagQueryResult> actual = tools.searchDocuments("question", 3, 0.5);
 
         assertThat(actual).isEqualTo(expected);
         verify(ragFacade).search("question", 3, 0.5);

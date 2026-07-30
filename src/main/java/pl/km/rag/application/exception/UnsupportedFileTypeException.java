@@ -1,4 +1,4 @@
-package pl.km.shared.exception;
+package pl.km.rag.application.exception;
 
 public class UnsupportedFileTypeException extends RuntimeException {
 
