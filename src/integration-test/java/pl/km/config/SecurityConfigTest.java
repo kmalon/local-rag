@@ -17,7 +17,6 @@ import pl.km.rag.application.port.in.QueryDocumentPort;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -56,7 +55,7 @@ class SecurityConfigTest {
 
     @Test
     void queryAllowedForRagUser() throws Exception {
-        when(queryDocumentPort.query(any(), anyInt(), any())).thenReturn(List.of());
+        when(queryDocumentPort.query(any(), any(), any())).thenReturn(List.of());
         mockMvc.perform(post("/api/documents/query")
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_rag_user")))
                         .contentType(MediaType.APPLICATION_JSON).content(QUERY_BODY))

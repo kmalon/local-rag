@@ -1,6 +1,6 @@
 package pl.km.rag.application;
 
-import pl.km.rag.application.model.QueryResult;
+import pl.km.rag.application.model.*;
 import pl.km.rag.application.port.in.QueryDocumentPort;
 import pl.km.rag.application.port.out.RerankerPort;
 import pl.km.rag.application.port.out.VectorSearchPort;
@@ -23,16 +23,24 @@ public class QueryDocumentService implements QueryDocumentPort {
     }
 
     @Override
-    public List<QueryResult> query(String question, int topK, Double score) {
-        double scoreThreshold = score != null ? score : queryProperties.defaultScoreThreshold();
+    public SearchLimits limits() {
+        int maxTopK = queryProperties.maxTopK();
+        return new SearchLimits(TopK.boundedBy(null, maxTopK).value(), maxTopK);
+    }
 
-        int poolSize = Math.max(queryProperties.candidatePoolSize(), topK);
-        List<QueryResult> candidates = vectorSearchPort.search(question, poolSize);
-        List<QueryResult> reranked = rerankerPort.rerank(question, candidates);
+    @Override
+    public List<QueryResult> query(String question, Integer topK, Double score) {
+        Question searchTerm = new Question(question);
+        TopK limit = TopK.boundedBy(topK, queryProperties.maxTopK());
+        MinScore threshold = new MinScore(score != null ? score : queryProperties.defaultScoreThreshold());
+
+        int poolSize = queryProperties.poolSizeFor(limit.value());
+        List<QueryResult> candidates = vectorSearchPort.search(searchTerm.value(), poolSize);
+        List<QueryResult> reranked = rerankerPort.rerank(searchTerm.value(), candidates);
 
         return reranked.stream()
-                .filter(r -> r.score() >= scoreThreshold)
-                .limit(topK)
+                .filter(r -> r.score() >= threshold.value())
+                .limit(limit.value())
                 .toList();
     }
 }

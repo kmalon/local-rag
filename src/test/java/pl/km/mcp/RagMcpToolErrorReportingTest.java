@@ -9,6 +9,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.util.MimeType;
 import pl.km.rag.adapter.in.DefaultRagFacade;
+import pl.km.rag.application.exception.InvalidInputException;
 import pl.km.rag.application.exception.RerankerException;
 import pl.km.rag.application.model.QueryResult;
 import pl.km.rag.application.port.in.QueryDocumentPort;
@@ -18,23 +19,9 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-/**
- * Drives a {@code tools/call} of {@code search_rag_documents} through the real Spring AI +
- * MCP SDK conversion chain — {@code MethodToolCallback} → {@code ToolExecutionException} →
- * {@link McpToolUtils} → {@link McpSchema.CallToolResult} — with only the RAG port stubbed.
- * <p>
- * What it pins down: a reranker failure reaches the agent as a tool result with
- * {@code isError=true} whose text is the message chosen in {@link DefaultRagFacade}, not the
- * internal cause. That is what makes the wording of those constants part of the contract.
- * <p>
- * A unit test despite exercising third-party code: it starts no Spring context, which is the
- * line this project draws between {@code src/test} and {@code src/integration-test}. The
- * Streamable HTTP transport in front of it is covered by {@code McpSecurityTest}.
- */
 class RagMcpToolErrorReportingTest {
 
     private static final MimeType JSON = MimeType.valueOf("application/json");
@@ -42,7 +29,7 @@ class RagMcpToolErrorReportingTest {
     private final QueryDocumentPort queryDocumentPort = mock(QueryDocumentPort.class);
 
     private McpStatelessServerFeatures.SyncToolSpecification searchTool() {
-        RagMcpTools tools = new RagMcpTools(new DefaultRagFacade(queryDocumentPort), 20);
+        RagMcpTools tools = new RagMcpTools(new DefaultRagFacade(queryDocumentPort));
         ToolCallback[] callbacks = MethodToolCallbackProvider.builder().toolObjects(tools).build().getToolCallbacks();
         assertThat(callbacks).hasSize(1);
         return McpToolUtils.toStatelessSyncToolSpecification(callbacks[0], JSON);
@@ -67,7 +54,7 @@ class RagMcpToolErrorReportingTest {
 
     @Test
     void rerankerFailureIsReportedAsAToolErrorNotATransportFailure() {
-        when(queryDocumentPort.query(any(), anyInt(), any()))
+        when(queryDocumentPort.query(any(), any(), any()))
                 .thenThrow(new RerankerException("Cross-encoder inference failed", new IllegalStateException()));
 
         McpSchema.CallToolResult result = callSearch();
@@ -79,8 +66,21 @@ class RagMcpToolErrorReportingTest {
     }
 
     @Test
+    void rejectedArgumentTellsTheAgentTheRuleRatherThanToRetry() {
+        when(queryDocumentPort.query(any(), any(), any()))
+                .thenThrow(new InvalidInputException("topK must be between 1 and 20"));
+
+        McpSchema.CallToolResult result = callSearch();
+
+        assertThat(result.isError()).isTrue();
+        assertThat(textOf(result))
+                .isEqualTo("topK must be between 1 and 20")
+                .doesNotContain("Retry in a few seconds");
+    }
+
+    @Test
     void toolErrorDoesNotLeakInternalDetail() {
-        when(queryDocumentPort.query(any(), anyInt(), any()))
+        when(queryDocumentPort.query(any(), any(), any()))
                 .thenThrow(new IllegalStateException("pgvector connection refused at 10.0.0.1:5432"));
 
         assertThat(textOf(callSearch()))
@@ -91,7 +91,7 @@ class RagMcpToolErrorReportingTest {
 
     @Test
     void successfulSearchIsNotFlaggedAsAnError() {
-        when(queryDocumentPort.query(any(), anyInt(), any()))
+        when(queryDocumentPort.query(any(), any(), any()))
                 .thenReturn(List.of(new QueryResult("doc.txt", "body", 0.9)));
 
         McpSchema.CallToolResult result = callSearch();
