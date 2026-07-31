@@ -8,6 +8,13 @@ import pl.km.shared.rag.RagQueryResult;
 
 import java.util.List;
 
+/**
+ * Tools published over MCP so external AI agents/LLMs can read the local RAG
+ * knowledge base. Read-only: reachable with the {@code rag_mcp_user} realm role.
+ *
+ * <p>Omitted parameters are defaulted by {@link RagFacade}; the bounds and defaults
+ * it enforces are published in the tool schema by {@code McpServerConfig}.
+ */
 @Component
 public class RagMcpTools {
 
