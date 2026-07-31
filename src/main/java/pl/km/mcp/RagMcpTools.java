@@ -3,19 +3,20 @@ package pl.km.mcp;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
-import pl.km.shared.rag.RagQueryResult;
 import pl.km.shared.rag.RagFacade;
+import pl.km.shared.rag.RagQueryResult;
 
 import java.util.List;
 
 /**
  * Tools published over MCP so external AI agents/LLMs can read the local RAG
  * knowledge base. Read-only: reachable with the {@code rag_mcp_user} realm role.
+ *
+ * <p>Omitted parameters are defaulted by {@link RagFacade}; the bounds and defaults
+ * it enforces are published in the tool schema by {@code McpServerConfig}.
  */
 @Component
 public class RagMcpTools {
-
-    static final int DEFAULT_TOP_K = 5;
 
     private final RagFacade ragFacade;
 
@@ -28,10 +29,10 @@ public class RagMcpTools {
                     + "ranked by relevance. Use it to ground answers in the user's own documents.")
     public List<RagQueryResult> searchDocuments(
             @ToolParam(description = "Natural-language question to search for") String question,
-            @ToolParam(description = "Maximum number of chunks to return, default 5", required = false) Integer topK,
+            @ToolParam(description = "Maximum number of chunks to return.",
+                    required = false) Integer topK,
             @ToolParam(description = "Minimum relevance score in [0,1]; omit to use the server default",
                     required = false) Double minScore) {
-        int effectiveTopK = (topK == null || topK <= 0) ? DEFAULT_TOP_K : topK;
-        return ragFacade.search(question, effectiveTopK, minScore);
+        return ragFacade.search(question, topK, minScore);
     }
 }

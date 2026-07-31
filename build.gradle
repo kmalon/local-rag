@@ -1,7 +1,7 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.3.0'
-    id 'io.spring.dependency-management' version '1.1.5'
+    id 'org.springframework.boot' version '3.5.15'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group = 'pl.km'
@@ -13,7 +13,9 @@ repositories {
 }
 
 ext {
-    set('springAiVersion', '1.0.0')
+    // 1.1.x is the first line shipping the MCP Streamable HTTP transports (MCP Java SDK 0.18.x);
+    // it is built against Spring Boot 3.5.x, hence the Boot version above.
+    set('springAiVersion', '1.1.8')
 }
 
 dependencies {
@@ -25,12 +27,12 @@ dependencies {
     implementation 'org.springframework.ai:spring-ai-starter-vector-store-pgvector'
     implementation 'org.springframework.ai:spring-ai-transformers'
     implementation 'org.springframework.ai:spring-ai-tika-document-reader'
-    // MCP server (SSE over Spring MVC) exposing the RAG knowledge base to AI agents.
+    // MCP server (Streamable HTTP over Spring MVC) exposing the RAG knowledge base to AI agents.
     implementation 'org.springframework.ai:spring-ai-starter-mcp-server-webmvc'
     // Cross-encoder reranker: HuggingFace tokenizer + ONNX Runtime inference.
-    // Versions align with those already pulled transitively by spring-ai-transformers (Spring AI 1.0.0).
-    implementation 'ai.djl.huggingface:tokenizers:0.30.0'
-    implementation 'com.microsoft.onnxruntime:onnxruntime:1.19.2'
+    // Versions align with those already pulled transitively by spring-ai-transformers (Spring AI 1.1.8).
+    implementation 'ai.djl.huggingface:tokenizers:0.32.0'
+    implementation 'com.microsoft.onnxruntime:onnxruntime:1.20.0'
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'

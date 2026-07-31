@@ -8,7 +8,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 class RagMcpToolsTest {
@@ -19,7 +18,7 @@ class RagMcpToolsTest {
     @Test
     void passesArgumentsToFacadeAndReturnsResults() {
         List<RagQueryResult> expected = List.of(new RagQueryResult("doc.txt", "body", 0.9));
-        when(ragFacade.search(any(), anyInt(), any())).thenReturn(expected);
+        when(ragFacade.search(any(), any(), any())).thenReturn(expected);
 
         List<RagQueryResult> actual = tools.searchDocuments("question", 3, 0.5);
 
@@ -28,16 +27,16 @@ class RagMcpToolsTest {
     }
 
     @Test
-    void usesDefaultTopKWhenNotProvided() {
+    void forwardsAbsentArgumentsWithoutSubstitutingDefaults() {
         tools.searchDocuments("question", null, null);
 
-        verify(ragFacade).search("question", RagMcpTools.DEFAULT_TOP_K, null);
+        verify(ragFacade).search("question", null, null);
     }
 
     @Test
-    void usesDefaultTopKWhenNotPositive() {
-        tools.searchDocuments("question", 0, null);
+    void forwardsOutOfRangeArgumentsForTheSearchToReject() {
+        tools.searchDocuments("question", 100_000, null);
 
-        verify(ragFacade).search("question", RagMcpTools.DEFAULT_TOP_K, null);
+        verify(ragFacade).search("question", 100_000, null);
     }
 }

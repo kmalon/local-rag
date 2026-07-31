@@ -35,7 +35,7 @@ import java.util.Map;
 /**
  * Secures the REST API and the MCP server as an OAuth2 Resource Server validating
  * Keycloak-issued JWTs. Ingestion endpoints require the {@code rag_admin} realm role;
- * the query (read) endpoint requires {@code rag_user}; the MCP endpoints require
+ * the query (read) endpoint requires {@code rag_user}; the MCP endpoint requires
  * {@code rag_mcp_user}. Keycloak places realm roles under the
  * {@code realm_access.roles} claim, so a custom converter maps them to Spring
  * {@code ROLE_}-prefixed authorities.
@@ -46,7 +46,7 @@ import java.util.Map;
  *
  * <p>Two chains, because the two surfaces demand different audiences:
  * <ul>
- *   <li>{@code /mcp/**} requires {@code keycloak.audience.mcp} ({@code rag-mcp}) —
+ *   <li>{@code /mcp} requires {@code keycloak.audience.mcp} ({@code rag-mcp}) —
  *       narrow and MCP-specific, so a token an agent holds cannot be replayed against
  *       the platform's other APIs. It also answers 401 with an RFC 9728
  *       {@code resource_metadata} hint.</li>
@@ -71,7 +71,10 @@ public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     /**
-     * MCP chain; ordered first so {@code /mcp/**} never falls through to the API chain.
+     * MCP chain; ordered first so {@code /mcp} never falls through to the API chain.
+     * The transport is stateless Streamable HTTP, so each request carries its own bearer
+     * token and is authorised on its own — there is no session for a first request to
+     * establish and later ones to inherit.
      */
     @Bean
     @Order(1)
@@ -81,7 +84,10 @@ public class SecurityConfig {
                                               @Value("${keycloak.audience.mcp}") String audience,
                                               @Value("${mcp.resource}") String resource) throws Exception {
         http
-                .securityMatcher("/mcp/**")
+                // The Streamable HTTP transport lives at exactly /mcp; "/mcp/**" covers it
+                // under both matcher implementations, but the bare path is spelled out
+                // because this chain is the only thing between an agent and the tool.
+                .securityMatcher("/mcp", "/mcp/**")
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

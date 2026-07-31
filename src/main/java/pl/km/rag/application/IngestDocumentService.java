@@ -2,6 +2,8 @@ package pl.km.rag.application;
 
 import org.springframework.transaction.annotation.Transactional;
 import pl.km.rag.application.model.Document;
+import pl.km.rag.application.model.DocumentContent;
+import pl.km.rag.application.model.DocumentName;
 import pl.km.rag.application.port.in.IngestDocumentPort;
 import pl.km.rag.application.port.in.IngestFilePort;
 import pl.km.rag.application.port.out.DocumentVectorRepository;
@@ -30,9 +32,12 @@ public class IngestDocumentService implements IngestDocumentPort, IngestFilePort
     @Override
     @Transactional
     public void ingest(String name, String content) {
-        List<String> chunks = textSplitterPort.split(content);
+        DocumentName documentName = new DocumentName(name);
+        DocumentContent documentContent = new DocumentContent(content);
+
+        List<String> chunks = textSplitterPort.split(documentContent.value());
         for (int i = 0; i < chunks.size(); i++) {
-            Document document = Document.chunk(name, chunks.get(i), i);
+            Document document = Document.chunk(documentName.value(), chunks.get(i), i);
             float[] embedding = embeddingPort.embed(document.content());
             documentVectorRepository.save(document, embedding);
         }
