@@ -1,0 +1,22 @@
+# Requires the metrics-server addon (deploy.sh enables it); without it the HPA reports
+# an <unknown> target and holds at minReplicas.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: rag-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: rag-app
+  # Floor of 2 so a rollout or node hiccup never leaves a single replica serving.
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Percent of the pod's CPU *request* (250m), not of a core.
+          averageUtilization: 70

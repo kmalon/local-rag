@@ -1,0 +1,15 @@
+# The Dockerfile does `COPY . .`, so everything here is transferred on every build —
+# over the network when the daemon is minikube's. Trim what the build never reads.
+# Note: src/main/resources/models/ is deliberately NOT excluded; the reranker ONNX model
+# is packaged onto the jar's classpath and the Kubernetes deployment relies on it.
+.git
+.github
+.gradle
+build
+.idea
+claude
+k8s
+# Never let local credentials into the build context (the final stage copies only the
+# jar, so they would not reach the image today — this keeps it that way).
+secrets
+docker-compose.yml

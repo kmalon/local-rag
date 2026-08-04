@@ -19,6 +19,7 @@ import java.util.List;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -84,5 +85,16 @@ class SecurityConfigTest {
                         .with(jwt().authorities(new SimpleGrantedAuthority("ROLE_rag_user")))
                         .contentType(MediaType.APPLICATION_JSON).content(INGEST_BODY))
                 .andExpect(status().isForbidden());
+    }
+
+    /**
+     * The kubelet probes these paths without a bearer token. This slice has no actuator
+     * autoconfiguration, so a permitted request falls through to a 404 — which is exactly
+     * the assertion: anything but 401 proves the filter chain let it past unauthenticated.
+     */
+    @Test
+    void healthProbesArePublic() throws Exception {
+        mockMvc.perform(get("/actuator/health/readiness")).andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/health/liveness")).andExpect(status().isNotFound());
     }
 }

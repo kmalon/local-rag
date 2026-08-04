@@ -1,0 +1,81 @@
+# pgvector, the same image docker-compose uses. A StatefulSet (not a Deployment) so the
+# PersistentVolumeClaim is bound to a stable pod identity and survives a rollout, the way
+# the `pgdata` compose volume does.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rag-db
+spec:
+  serviceName: rag-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rag-db
+  template:
+    metadata:
+      labels:
+        app: rag-db
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: ragdb
+            # Same file-based credentials as compose: the Secret is mounted at /run/secrets
+            # and Postgres reads the values out of it, so no credential lands in the pod spec.
+            - name: POSTGRES_USER_FILE
+              value: /run/secrets/username
+            - name: POSTGRES_PASSWORD_FILE
+              value: /run/secrets/password
+            # PGDATA must be a subdirectory of the mount: the volume root holds lost+found,
+            # and initdb refuses a non-empty directory.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-d", "ragdb"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: secrets
+          secret:
+            secretName: rag-postgres
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-db
+spec:
+  # Cluster-internal only: nothing on the host needs to reach the database, so unlike the
+  # app and Keycloak Services this one is not published through `minikube tunnel`.
+  type: ClusterIP
+  selector:
+    app: rag-db
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

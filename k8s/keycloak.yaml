@@ -1,0 +1,110 @@
+# Keycloak in dev mode, one replica, no persistence: the realm is re-imported from the
+# ConfigMap on every start, exactly as under docker-compose.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  # start-dev keeps realm state in an in-memory H2, so two Keycloaks would disagree.
+  # Recreate rather than roll: the old pod must release the port before the new one binds.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          # Byte-identical to the docker-compose entrypoint. Both engines turn `$$` into a
+          # literal `$`, so the same text survives compose interpolation and the kubelet's
+          # `$(VAR)` substitution — one script, two deployments, no drift.
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              mkdir -p /opt/keycloak/data/import
+              # Use bash parameter expansion (not sed) so passwords containing
+              # sed metacharacters like | & \ / are substituted literally.
+              template="$$(cat /opt/keycloak/data/import-template/realm-local-rag.json)"
+              template="$${template//__RAG_ADMIN_PASSWORD__/$$(cat /run/secrets/rag_admin_password)}"
+              template="$${template//__RAG_USER_PASSWORD__/$$(cat /run/secrets/rag_user_password)}"
+              template="$${template//__RAG_API_CLIENT_SECRET__/$$(cat /run/secrets/rag_api_client_secret)}"
+              printf '%s' "$$template" > /opt/keycloak/data/import/realm-local-rag.json
+              export KC_BOOTSTRAP_ADMIN_USERNAME="$$(cat /run/secrets/keycloak_admin_user)"
+              export KC_BOOTSTRAP_ADMIN_PASSWORD="$$(cat /run/secrets/keycloak_admin_password)"
+              exec /opt/keycloak/bin/kc.sh start-dev --import-realm
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: management
+              containerPort: 9000
+          env:
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            # The URL tokens are issued under, and therefore the `iss` the app validates.
+            # `minikube tunnel` publishes the Service below on 127.0.0.1:8081, so this is
+            # the same value compose uses and no app config has to change.
+            - name: KC_HOSTNAME
+              value: http://localhost:8081
+            - name: KC_HOSTNAME_STRICT
+              value: "false"
+          volumeMounts:
+            - name: realm
+              mountPath: /opt/keycloak/data/import-template
+              readOnly: true
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+          # Straight HTTP against the management port — no /dev/tcp handshake needed here,
+          # because the kubelet speaks HTTP itself.
+          startupProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: realm
+          configMap:
+            name: keycloak-realm
+        - name: secrets
+          secret:
+            secretName: rag-keycloak
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+spec:
+  # Published on 127.0.0.1:8081 by `minikube tunnel`, matching the compose port mapping.
+  type: LoadBalancer
+  selector:
+    app: keycloak
+  ports:
+    - name: http
+      # In-cluster callers (the app's jwk-set-uri) use this port too, not 8080.
+      port: 8081
+      targetPort: http
