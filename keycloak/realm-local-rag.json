@@ -42,7 +42,7 @@
   "clientScopes": [
     {
       "name": "roles",
-      "description": "OpenID Connect scope for add user roles to the access token. Declared here, not inherited: Keycloak seeds its built-in client scopes only when the imported realm has no `clientScopes` key at all, so once the two scopes below are declared every scope a client references must be declared too — an undeclared one is skipped with a warning, and without this scope tokens carry no `realm_access.roles` and every request is denied.",
+      "description": "OpenID Connect scope for add user roles to the access token. Declared here, not inherited.",
       "protocol": "openid-connect",
       "attributes": {
         "include.in.token.scope": "false",
