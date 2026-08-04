@@ -1,0 +1,99 @@
+# The scaled unit. Stateless by construction — JWT auth, STATELESS MCP transport, all
+# state in Postgres — so replicas need no coordination and the Service can spray requests
+# across them. The reranker/embedding ONNX models ride along inside the image (see the
+# `classpath:` defaults in application.yml), which is what keeps a replica self-contained.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag-app
+  template:
+    metadata:
+      labels:
+        app: rag-app
+    spec:
+      containers:
+        - name: app
+          image: local-rag:dev
+          # Built straight into minikube's docker daemon by deploy.sh; there is no registry
+          # to pull from. `Never` would break if the tag were ever pushed, `Always` fails now.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://rag-db:5432/ragdb
+            # Datasource username/password come from the Secret mounted at /run/secrets,
+            # read through Spring's configtree — the same mechanism compose uses.
+            - name: SPRING_CONFIG_IMPORT
+              value: optional:configtree:/run/secrets/
+            # Public issuer (must equal the token's `iss`) vs in-cluster JWKS URL.
+            - name: KEYCLOAK_ISSUER_URI
+              value: http://localhost:8081/realms/local-rag
+            - name: KEYCLOAK_JWK_SET_URI
+              value: http://keycloak:8081/realms/local-rag/protocol/openid-connect/certs
+            - name: API_AUDIENCE
+              value: rag-platform
+            - name: MCP_AUDIENCE
+              value: rag-mcp
+            - name: MCP_RESOURCE
+              value: http://localhost:8080/mcp
+            # Without this the JVM sizes its heap from the node's memory, not the cgroup
+            # limit below, and the pod gets OOMKilled once the ONNX models are resident.
+            - name: JAVA_TOOL_OPTIONS
+              value: -XX:MaxRAMPercentage=75
+          volumeMounts:
+            - name: secrets
+              mountPath: /run/secrets
+              readOnly: true
+          # First boot downloads the embedding model, so give startup a long leash; once
+          # the startupProbe passes, the tighter readiness/liveness periods take over.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 15
+          resources:
+            # The CPU request is what the HPA measures utilisation against — without it
+            # the autoscaler has no denominator and reports <unknown>.
+            requests:
+              cpu: 250m
+              memory: 768Mi
+            limits:
+              cpu: "2"
+              memory: 1536Mi
+      volumes:
+        - name: secrets
+          secret:
+            secretName: rag-datasource
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-app
+spec:
+  # Published on 127.0.0.1:8080 by `minikube tunnel`. Unlike `kubectl port-forward`, this
+  # path goes through kube-proxy, so requests really are balanced over every ready replica.
+  type: LoadBalancer
+  selector:
+    app: rag-app
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

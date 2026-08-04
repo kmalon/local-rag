@@ -118,6 +118,12 @@ public class SecurityConfig {
                         .requestMatchers("/.well-known/oauth-protected-resource",
                                 "/.well-known/oauth-protected-resource/**")
                         .permitAll()
+                        // Kubernetes probes: the kubelet holds no token, so an authenticated
+                        // health endpoint would fail every liveness/readiness check. Safe to
+                        // open because `management.endpoint.health.show-details: never` keeps
+                        // the response to a bare UP/DOWN.
+                        .requestMatchers("/actuator/health", "/actuator/health/**")
+                        .permitAll()
                         // Method-agnostic: the role is required for every method on these
                         // paths, so a non-POST request cannot slip past the role check.
                         .requestMatchers("/api/documents/ingest", "/api/documents/ingest/file")

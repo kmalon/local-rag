@@ -23,6 +23,21 @@ spring:
         streamable-http:
           mcp-endpoint: /mcp
 
+management:
+  endpoints:
+    web:
+      exposure:
+        # Health only. The Service (and therefore `minikube tunnel`) publishes this port,
+        # so every extra endpoint would be reachable from the host too.
+        include: health
+  endpoint:
+    health:
+      # Adds the `liveness` and `readiness` groups the kubelet probes hit.
+      probes:
+        enabled: true
+      # The probe is public (see SecurityConfig); only the aggregate status leaves the pod.
+      show-details: never
+
 keycloak:
   issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8081/realms/local-rag}
   jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8081/realms/local-rag/protocol/openid-connect/certs}

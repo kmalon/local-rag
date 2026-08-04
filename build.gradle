@@ -21,6 +21,9 @@ ext {
 dependencies {
     implementation platform("org.springframework.ai:spring-ai-bom:${springAiVersion}")
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    // Health probes for the kubelet (liveness/readiness/startup); see the `management` block
+    // in application.yml and the permitAll rule in SecurityConfig.
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
