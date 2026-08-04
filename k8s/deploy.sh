@@ -10,7 +10,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-PROFILE="${MINIKUBE_PROFILE:-minikube}"
 NAMESPACE="local-rag"
 IMAGE="local-rag:dev"
 
@@ -22,7 +21,28 @@ for cmd in minikube kubectl docker; do
   command -v "$cmd" >/dev/null || die "'$cmd' not found on PATH."
 done
 
-# --- 2. preflight -------------------------------------------------------------
+# --- 2. cluster identity ------------------------------------------------------
+# Which minikube cluster this run targets, following the same precedence minikube
+# itself uses: $MINIKUBE_PROFILE, then the persisted default (`minikube profile
+# <name>`), then the built-in `minikube`. Reading the persisted value is what stops
+# the script from silently overriding a profile the user deliberately selected.
+resolve_profile() {
+  local p="${MINIKUBE_PROFILE:-}"
+  [[ -n "$p" ]] || p="$(minikube config get profile 2>/dev/null || true)"
+  [[ -n "$p" ]] || p="minikube"
+  printf '%s' "$p"
+}
+PROFILE="$(resolve_profile)"
+
+# Pin kubectl to that same cluster. `minikube -p` and kubectl's current-context are
+# two independent pointers; left unpinned, kubectl follows whatever context happens
+# to be selected — so the image lands in one cluster while the manifests, Secrets
+# included, are applied to another (a remote work cluster, say). minikube names the
+# context after the profile, so this also fails loudly on a wrong name instead of
+# deploying somewhere unintended.
+KUBECTL=(kubectl --context "$PROFILE")
+
+# --- 3. preflight -------------------------------------------------------------
 # Fail before the (slow) image build rather than on a CrashLoopBackOff.
 SECRET_FILES=(
   secrets/postgres_user.txt
@@ -44,32 +64,40 @@ for f in src/main/resources/models/reranker/model.onnx \
   [[ -s "$f" ]] || die "missing $f — see src/main/resources/models/reranker/README.md."
 done
 
-# --- 3. cluster ---------------------------------------------------------------
+# --- 4. cluster ---------------------------------------------------------------
 if ! minikube -p "$PROFILE" status >/dev/null 2>&1; then
   log "Starting minikube profile '$PROFILE'"
   # Two Java stacks plus Postgres; the 2 CPU / 2 GB default cannot hold them.
   minikube -p "$PROFILE" start --cpus=4 --memory=8g
 fi
 
+# minikube writes this context on start, so by now it must exist. If it does not, the
+# profile and the kubeconfig disagree and every kubectl below would target the wrong
+# cluster — stop rather than guess.
+kubectl config get-contexts "$PROFILE" >/dev/null 2>&1 \
+  || die "no kubeconfig context named '$PROFILE'; run: minikube -p $PROFILE update-context"
+
 log "Enabling metrics-server (required by the HorizontalPodAutoscaler)"
 minikube -p "$PROFILE" addons enable metrics-server
 
-# --- 4. image -----------------------------------------------------------------
+# --- 5. image -----------------------------------------------------------------
 # Build straight into the cluster's daemon: no registry, no `minikube image load` copy.
 log "Building $IMAGE inside minikube's docker daemon"
 eval "$(minikube -p "$PROFILE" docker-env)"
 docker build -t "$IMAGE" .
 
-# --- 5. cluster-side inputs ---------------------------------------------------
+# --- 6. cluster-side inputs ---------------------------------------------------
 # Secrets and the realm ConfigMap are created here, not by kustomize: their sources live
 # outside k8s/ (which kustomize will not read) and the secret values must stay untracked.
 log "Applying namespace, secrets and realm ConfigMap"
-kubectl apply -f k8s/namespace.yaml
+"${KUBECTL[@]}" apply -f k8s/namespace.yaml
 
 apply_secret() { # apply_secret <name> <--from-file args...>
   local name="$1"; shift
-  kubectl -n "$NAMESPACE" create secret generic "$name" "$@" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  # `create --dry-run=client` only renders the manifest; the piped apply is the write,
+  # so both halves must be pinned to the same context.
+  "${KUBECTL[@]}" -n "$NAMESPACE" create secret generic "$name" "$@" \
+    --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 }
 
 apply_secret rag-postgres \
@@ -93,39 +121,39 @@ apply_secret rag-keycloak \
 # Keycloak only reads the realm at startup, so a changed template needs a restart. Detect
 # that before overwriting the ConfigMap; an unchanged realm must not disturb a running pod.
 realm_changed=0
-if ! kubectl -n "$NAMESPACE" get configmap keycloak-realm \
+if ! "${KUBECTL[@]}" -n "$NAMESPACE" get configmap keycloak-realm \
       -o "jsonpath={.data['realm-local-rag\.json']}" 2>/dev/null \
       | diff -q - keycloak/realm-local-rag.json >/dev/null 2>&1; then
   realm_changed=1
 fi
-kubectl -n "$NAMESPACE" create configmap keycloak-realm \
+"${KUBECTL[@]}" -n "$NAMESPACE" create configmap keycloak-realm \
   --from-file=keycloak/realm-local-rag.json \
-  --dry-run=client -o yaml | kubectl apply -f -
+  --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 
-# --- 6. workloads -------------------------------------------------------------
+# --- 7. workloads -------------------------------------------------------------
 log "Applying manifests"
-kubectl apply -k k8s/
+"${KUBECTL[@]}" apply -k k8s/
 
-if [[ "$realm_changed" == 1 ]] && kubectl -n "$NAMESPACE" get deploy keycloak >/dev/null 2>&1; then
+if [[ "$realm_changed" == 1 ]] && "${KUBECTL[@]}" -n "$NAMESPACE" get deploy keycloak >/dev/null 2>&1; then
   log "Realm changed — restarting Keycloak to re-import it"
-  kubectl -n "$NAMESPACE" rollout restart deployment/keycloak
+  "${KUBECTL[@]}" -n "$NAMESPACE" rollout restart deployment/keycloak
 fi
 
 # The app image tag never changes, so an unchanged pod spec would leave the old pods
 # running with the newly built image ignored. Force them to pick it up.
 log "Rolling the app onto the freshly built image"
-kubectl -n "$NAMESPACE" rollout restart deployment/rag-app
+"${KUBECTL[@]}" -n "$NAMESPACE" rollout restart deployment/rag-app
 
 log "Waiting for rollouts (first start downloads the embedding model — be patient)"
-kubectl -n "$NAMESPACE" rollout status statefulset/rag-db --timeout=300s
-kubectl -n "$NAMESPACE" rollout status deployment/keycloak --timeout=600s
-kubectl -n "$NAMESPACE" rollout status deployment/rag-app --timeout=600s
+"${KUBECTL[@]}" -n "$NAMESPACE" rollout status statefulset/rag-db --timeout=300s
+"${KUBECTL[@]}" -n "$NAMESPACE" rollout status deployment/keycloak --timeout=600s
+"${KUBECTL[@]}" -n "$NAMESPACE" rollout status deployment/rag-app --timeout=600s
 
-kubectl -n "$NAMESPACE" get pods,svc,hpa
+"${KUBECTL[@]}" -n "$NAMESPACE" get pods,svc,hpa
 
 cat <<EOF
 
-$(printf '\033[1m')Deployed.$(printf '\033[0m') Publish the Services from a second terminal:
+$(printf '\033[1m')Deployed to profile '$PROFILE'.$(printf '\033[0m') Publish the Services from a second terminal:
 
     minikube -p $PROFILE tunnel
 

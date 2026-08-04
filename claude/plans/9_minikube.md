@@ -1,1 +1,1 @@
-As Devops Engineer and Java Developer add minikube to my local setup, that it will scale my App with k8s. Keep current setup as is, extend it only by minikube and only necessary changes for it.
+    As Devops Engineer and Java Developer add minikube to my local setup, that it will scale my App with k8s. Keep current setup as is, extend it only by minikube and only necessary changes for it.

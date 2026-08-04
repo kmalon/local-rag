@@ -38,6 +38,28 @@ Re-run `./k8s/deploy.sh` after any change; it rebuilds the image, refreshes the
 Secrets/ConfigMap and rolls the app. Keycloak is only restarted when the realm file
 actually changed.
 
+### Choosing a cluster
+
+`deploy.sh` targets one minikube profile — a profile being a wholly separate cluster
+with its own node, IP and **image store**. It is resolved like minikube resolves it
+itself: `$MINIKUBE_PROFILE`, else the persisted default from `minikube profile <name>`,
+else `minikube`.
+
+```bash
+MINIKUBE_PROFILE=rag ./k8s/deploy.sh      # deploy into an isolated cluster
+MINIKUBE_PROFILE=rag minikube tunnel      # the tunnel is per-profile too
+kubectl --context rag -n local-rag get pods
+```
+
+Every `kubectl` call in the script is pinned with `--context "$PROFILE"`, because
+kubectl's current-context is a *separate* pointer from `minikube -p`. Unpinned, the
+image would be built into one cluster while the manifests — Secrets included — were
+applied to whatever context happened to be selected, possibly a remote one.
+
+Images live inside the profile's own daemon, so switching profiles (or running
+`minikube delete`) means the new cluster has no `local-rag:dev`. Just re-run
+`./k8s/deploy.sh`; the first build in a fresh profile is a cold one, so expect minutes.
+
 ## What runs
 
 | Resource | Notes |
@@ -74,6 +96,8 @@ kubectl -n local-rag logs -l app=rag-app --tail=100
 - **401 with a fresh token** — the token's `iss` must be `http://localhost:8081/...`;
   mint it through the tunnel, not through a `port-forward` on a different port.
 - **`localhost:8080` refused** — `minikube tunnel` is not running.
+- **`ErrImagePull` on `local-rag:dev`** — the image lives in a different profile's image
+  store (or the cluster was deleted and recreated). Re-run `./k8s/deploy.sh`.
 
 ## Teardown
 
