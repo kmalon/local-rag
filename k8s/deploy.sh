@@ -130,11 +130,21 @@ fi
   --from-file=keycloak/realm-local-rag.json \
   --dry-run=client -o yaml | "${KUBECTL[@]}" apply -f -
 
+# Sampled before the apply below creates it: a Keycloak that does not exist yet is about
+# to start with the current realm anyway, so a first deploy must not count as "needs a
+# restart" — that would tear down a pod seconds after creating it.
+keycloak_existed=0
+if "${KUBECTL[@]}" -n "$NAMESPACE" get deploy keycloak >/dev/null 2>&1; then
+  keycloak_existed=1
+fi
+
 # --- 7. workloads -------------------------------------------------------------
 log "Applying manifests"
 "${KUBECTL[@]}" apply -k k8s/
 
-if [[ "$realm_changed" == 1 ]] && "${KUBECTL[@]}" -n "$NAMESPACE" get deploy keycloak >/dev/null 2>&1; then
+# Restarting is a hard reset here: start-dev keeps the realm in memory, so this also drops
+# sessions and regenerates the signing keys. Only worth it when the realm actually changed.
+if [[ "$realm_changed" == 1 && "$keycloak_existed" == 1 ]]; then
   log "Realm changed — restarting Keycloak to re-import it"
   "${KUBECTL[@]}" -n "$NAMESPACE" rollout restart deployment/keycloak
 fi
