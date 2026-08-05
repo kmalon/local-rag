@@ -1,0 +1,598 @@
+{
+  "info": {
+    "_postman_id": "8c1f5d4a-6b2e-4a51-9f3d-1a2b3c4d5e6f",
+    "name": "local-rag",
+    "description": "All HTTP endpoints of the local-rag app (Spring Boot 3.5 + Spring AI).\n\n## How to use\n\n1. Start the stack: `docker compose up` (app on :8080, Keycloak on :8081) or `k8s/deploy.sh` + `minikube tunnel` — both publish the same ports.\n2. Import `local-rag.postman_environment.json` and select the environment (top right).\n3. Fill in the three credentials. **These files carry no secrets** — open the environment editor and paste into the **Current value** column (it stays on your machine and is never exported) of:\n   - `apiClientSecret` ← `secrets/rag_api_client_secret.txt`\n   - `adminPassword` ← `secrets/rag_admin_password.txt`\n   - `userPassword` ← `secrets/rag_user_password.txt`\n4. Run **0. Auth → Token — Admin / User / MCP agent** once. Their test scripts store `adminToken`, `userToken` and `mcpToken` as collection variables; every other request picks the right one automatically.\n5. Tokens are short-lived — re-run the token request when you start getting 401.\n\n## Roles / audiences\n\n| Surface | Client | Scope | Audience | Realm role |\n| --- | --- | --- | --- | --- |\n| `/api/documents/ingest*` | `rag-api-client` (confidential) | `openid rag-api` | `rag-platform` | `rag_admin` |\n| `/api/documents/query` | `rag-api-client` | `openid rag-api` | `rag-platform` | `rag_user` |\n| `/mcp` | `rag-mcp-client` (public) | `openid rag-mcp-api` | `rag-mcp` | `rag_mcp_user` |\n\nThe two client/scope pairs are mutually unreachable by design: a REST token cannot call `/mcp` and an MCP token cannot call the REST API.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "keycloakUrl", "value": "http://localhost:8081", "type": "string" },
+    { "key": "realm", "value": "local-rag", "type": "string" },
+    { "key": "apiClientId", "value": "rag-api-client", "type": "string" },
+    { "key": "apiClientSecret", "value": "", "type": "string" },
+    { "key": "mcpClientId", "value": "rag-mcp-client", "type": "string" },
+    { "key": "adminUsername", "value": "Admin", "type": "string" },
+    { "key": "adminPassword", "value": "", "type": "string" },
+    { "key": "userUsername", "value": "User", "type": "string" },
+    { "key": "userPassword", "value": "", "type": "string" },
+    { "key": "adminToken", "value": "", "type": "string" },
+    { "key": "userToken", "value": "", "type": "string" },
+    { "key": "mcpToken", "value": "", "type": "string" },
+    { "key": "mcpProtocolVersion", "value": "2025-06-18", "type": "string" }
+  ],
+  "auth": { "type": "noauth" },
+  "item": [
+    {
+      "name": "0. Auth",
+      "description": "Keycloak realm `local-rag`, direct access grant (password) flow. Run these first.",
+      "item": [
+        {
+          "name": "Token - Admin (REST, rag_admin + rag_user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('adminToken', body.access_token);",
+                  "pm.test('token carries the rag-platform audience', () => {",
+                  "    const claims = JSON.parse(atob(body.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "    const aud = [].concat(claims.aud || []);",
+                  "    pm.expect(aud).to.include('rag-platform');",
+                  "    pm.expect(claims.realm_access.roles).to.include('rag_admin');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "{{apiClientId}}", "type": "text" },
+                { "key": "client_secret", "value": "{{apiClientSecret}}", "type": "text" },
+                { "key": "username", "value": "{{adminUsername}}", "type": "text" },
+                { "key": "password", "value": "{{adminPassword}}", "type": "text" },
+                { "key": "scope", "value": "openid rag-api", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "{{realm}}", "protocol", "openid-connect", "token"]
+            },
+            "description": "Stores `adminToken`. `rag-api-client` is confidential, so the client secret (`secrets/rag_api_client_secret.txt`) is required. The optional scope `rag-api` is what injects the `rag-platform` audience — without it the app returns 401."
+          }
+        },
+        {
+          "name": "Token - User (REST, rag_user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set('userToken', pm.response.json().access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "{{apiClientId}}", "type": "text" },
+                { "key": "client_secret", "value": "{{apiClientSecret}}", "type": "text" },
+                { "key": "username", "value": "{{userUsername}}", "type": "text" },
+                { "key": "password", "value": "{{userPassword}}", "type": "text" },
+                { "key": "scope", "value": "openid rag-api", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "{{realm}}", "protocol", "openid-connect", "token"]
+            },
+            "description": "Stores `userToken`. Realm user `User` holds `rag_user` + `rag_mcp_user` but not `rag_admin`, so this token can query but not ingest."
+          }
+        },
+        {
+          "name": "Token - MCP agent (rag_mcp_user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('mcpToken', body.access_token);",
+                  "pm.test('token carries the rag-mcp audience', () => {",
+                  "    const claims = JSON.parse(atob(body.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));",
+                  "    pm.expect([].concat(claims.aud || [])).to.include('rag-mcp');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+            ],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "grant_type", "value": "password", "type": "text" },
+                { "key": "client_id", "value": "{{mcpClientId}}", "type": "text" },
+                { "key": "username", "value": "{{userUsername}}", "type": "text" },
+                { "key": "password", "value": "{{userPassword}}", "type": "text" },
+                { "key": "scope", "value": "openid rag-mcp-api", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/protocol/openid-connect/token",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "{{realm}}", "protocol", "openid-connect", "token"]
+            },
+            "description": "Stores `mcpToken`. `rag-mcp-client` is public — no client secret. The optional scope `rag-mcp-api` injects the `rag-mcp` audience required by the `/mcp` filter chain."
+          }
+        },
+        {
+          "name": "OpenID configuration (Keycloak)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{keycloakUrl}}/realms/{{realm}}/.well-known/openid-configuration",
+              "host": ["{{keycloakUrl}}"],
+              "path": ["realms", "{{realm}}", ".well-known", "openid-configuration"]
+            },
+            "description": "Authorization-server metadata: token endpoint, JWKS URI, supported grants. Not part of the app, but this is what the RFC 9728 document below points a client to."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Documents (REST)",
+      "description": "`DocumentController` — base path `/api/documents`.",
+      "item": [
+        {
+          "name": "Ingest text",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK (empty body)', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"name\": \"postman-note.txt\",\n  \"content\": \"Spring AI stores embeddings in PostgreSQL pgvector. The local-rag app over-fetches a candidate pool and re-scores it with a cross-encoder reranker before applying the score threshold.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/ingest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "ingest"]
+            },
+            "description": "Requires realm role `rag_admin`.\n\nBody: `{ name, content }` — both non-blank (`DocumentName`, `DocumentContent`), otherwise 400 with `{ \"message\": ... }`.\n\nThe content is chunked (1000 chars, 20% overlap), embedded, and written to pgvector. Responds 200 with an empty body."
+          }
+        },
+        {
+          "name": "Ingest file (multipart)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Pick a local file here. Parsed with Apache Tika (pdf, docx, txt, md, html, ...). The original filename becomes the document name."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/ingest/file",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "ingest", "file"]
+            },
+            "description": "Requires realm role `rag_admin`.\n\n**Select a file in the Body → form-data `file` row before sending** — Postman cannot ship a file path inside a collection.\n\nMultipart field name must be `file`. A missing/blank original filename gives 400; an unparsable type gives 400 with `{ \"message\": ... }`. Do not set `Content-Type` by hand — Postman adds the multipart boundary."
+          }
+        },
+        {
+          "name": "Query",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const results = pm.response.json().results;",
+                  "pm.test('results are ranked by descending score', () => {",
+                  "    const scores = results.map(r => r.score);",
+                  "    pm.expect(scores).to.eql([...scores].sort((a, b) => b - a));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"question\": \"How are embeddings stored?\",\n  \"topK\": 5,\n  \"score\": 0.75\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "query"]
+            },
+            "description": "Requires realm role `rag_user` (the Admin token works too — that user holds both roles).\n\nBody: `{ question, topK, score }`.\n- `question` — non-blank, required.\n- `topK` — optional, 1..20, default 5. Out of range → 400.\n- `score` — optional minimum **reranker** score in [0,1], default 0.75. Out of range → 400.\n\nResponse: `{ \"results\": [ { \"name\", \"content\", \"score\" } ] }`. An empty list means nothing cleared the threshold — lower `score` before assuming the ingest failed."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. MCP server",
+      "description": "Stateless Streamable HTTP at `POST /mcp` — one JSON-RPC message per request, JSON response, no session id and no SSE stream. Requires role `rag_mcp_user` and the `rag-mcp` audience, so use `{{mcpToken}}`.\n\nBecause the transport is stateless there is no handshake to keep: `tools/list` and `tools/call` work on their own, and `initialize` is only useful for inspecting server capabilities.",
+      "item": [
+        {
+          "name": "initialize",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{mcpToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"{{mcpProtocolVersion}}\",\n    \"capabilities\": {},\n    \"clientInfo\": {\n      \"name\": \"postman\",\n      \"version\": \"1.0\"\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/mcp",
+              "host": ["{{baseUrl}}"],
+              "path": ["mcp"]
+            },
+            "description": "Returns server info (`local-rag-mcp`) and capabilities. In STATELESS mode no `Mcp-Session-Id` is issued and the `notifications/initialized` follow-up is not needed."
+          }
+        },
+        {
+          "name": "tools/list",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('publishes search_rag_documents with the topK bounds', () => {",
+                  "    const tool = pm.response.json().result.tools.find(t => t.name === 'search_rag_documents');",
+                  "    pm.expect(tool, 'tool present').to.be.an('object');",
+                  "    pm.expect(tool.inputSchema.properties.topK.maximum).to.eql(20);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{mcpToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "MCP-Protocol-Version", "value": "{{mcpProtocolVersion}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 2,\n  \"method\": \"tools/list\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/mcp",
+              "host": ["{{baseUrl}}"],
+              "path": ["mcp"]
+            },
+            "description": "One read-only tool: `search_rag_documents`. Its JSON Schema carries the deployment's real `topK` range (`minimum: 1`, `maximum: 20`, default 5), patched in by `McpServerConfig` from `RagFacade.limits()`."
+          }
+        },
+        {
+          "name": "tools/call - search_rag_documents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('no JSON-RPC error', () => pm.expect(pm.response.json().error).to.be.undefined);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{mcpToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" },
+              { "key": "MCP-Protocol-Version", "value": "{{mcpProtocolVersion}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 3,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"search_rag_documents\",\n    \"arguments\": {\n      \"question\": \"How are embeddings stored?\",\n      \"topK\": 5,\n      \"minScore\": 0.75\n    }\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/mcp",
+              "host": ["{{baseUrl}}"],
+              "path": ["mcp"]
+            },
+            "description": "Same search as `POST /api/documents/query`, through the MCP tool. `topK` and `minScore` are optional — omit them for the server defaults (5 / 0.75). Bad arguments come back as a tool error telling the agent to fix the call, not to retry."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Discovery & health",
+      "description": "Public endpoints — no token needed.",
+      "item": [
+        {
+          "name": "Protected resource metadata (RFC 9728)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/oauth-protected-resource",
+              "host": ["{{baseUrl}}"],
+              "path": [".well-known", "oauth-protected-resource"]
+            },
+            "description": "`{ resource, authorization_servers, bearer_methods_supported }` — how an MCP client discovers Keycloak without being pre-configured with its URL. Unauthenticated by design."
+          }
+        },
+        {
+          "name": "Protected resource metadata (path-scoped, /mcp)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/oauth-protected-resource/mcp",
+              "host": ["{{baseUrl}}"],
+              "path": [".well-known", "oauth-protected-resource", "mcp"]
+            },
+            "description": "The RFC 9728 §3.1 form derived from the resource identifier `http://localhost:8080/mcp`. Same document as the bare path; this is the URL the 401 challenge points to."
+          }
+        },
+        {
+          "name": "Health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            },
+            "description": "Public (the kubelet carries no token). `show-details: never`, so the body is a bare `{\"status\":\"UP\"}`. Health is the only exposed actuator endpoint."
+          }
+        },
+        {
+          "name": "Health - liveness probe",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health/liveness",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health", "liveness"]
+            }
+          }
+        },
+        {
+          "name": "Health - readiness probe",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [{ "key": "Accept", "value": "application/json" }],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health/readiness",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health", "readiness"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Negative checks",
+      "description": "The boundaries the app promises to enforce. Run after 0. Auth.",
+      "item": [
+        {
+          "name": "Ingest with a rag_user token -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('403 Forbidden', () => pm.response.to.have.status(403));"]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"name\": \"denied.txt\",\n  \"content\": \"should not be stored\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/ingest",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "ingest"]
+            },
+            "description": "Ingestion needs `rag_admin`; `User` only has `rag_user`."
+          }
+        },
+        {
+          "name": "Query with topK above the limit -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('carries a message', () => pm.expect(pm.response.json().message).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"question\": \"anything\",\n  \"topK\": 999\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/documents/query",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "documents", "query"]
+            },
+            "description": "`topK` is capped at max-candidates / over-fetch-factor = 80 / 4 = 20. Same for a blank `question` or a `score` outside [0,1]."
+          }
+        },
+        {
+          "name": "MCP with a REST token -> 401 + resource_metadata",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));",
+                  "pm.test('challenge points at the RFC 9728 document', () => {",
+                  "    pm.expect(pm.response.headers.get('WWW-Authenticate') || '').to.include('resource_metadata');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{userToken}}", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "application/json, text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 4,\n  \"method\": \"tools/list\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/mcp",
+              "host": ["{{baseUrl}}"],
+              "path": ["mcp"]
+            },
+            "description": "A REST token carries `rag-platform`, not `rag-mcp`, so the MCP chain rejects it and answers with an RFC 9728 `resource_metadata` hint. The reverse (MCP token against the REST API) fails the same way, minus the hint."
+          }
+        },
+        {
+          "name": "Unknown well-known path -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', () => pm.response.to.have.status(404));"]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/oauth-protected-resource/not-a-resource",
+              "host": ["{{baseUrl}}"],
+              "path": [".well-known", "oauth-protected-resource", "not-a-resource"]
+            },
+            "description": "The document describes exactly one resource; answering for another path would confirm a wrong resource identifier."
+          }
+        }
+      ]
+    }
+  ]
+}
