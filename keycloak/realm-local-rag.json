@@ -135,6 +135,10 @@
       "username": "Admin",
       "enabled": true,
       "emailVerified": true,
+      "email": "admin@local-rag.test",
+      "firstName": "Rag",
+      "lastName": "Admin",
+      "requiredActions": [],
       "credentials": [
         { "type": "password", "value": "__RAG_ADMIN_PASSWORD__", "temporary": false }
       ],
@@ -144,6 +148,10 @@
       "username": "User",
       "enabled": true,
       "emailVerified": true,
+      "email": "user@local-rag.test",
+      "firstName": "Rag",
+      "lastName": "User",
+      "requiredActions": [],
       "credentials": [
         { "type": "password", "value": "__RAG_USER_PASSWORD__", "temporary": false }
       ],
